@@ -14,8 +14,10 @@ export default defineConfig({
     nav: [
       { text: '首页', link: '/' },
       { text: '指南', link: '/guide/' },
+      { text: 'MVP', link: '/mvp/' },
       { text: '架构', link: '/architecture/' },
       { text: '概念', link: '/concepts/core/rag' },
+      { text: '对比', link: '/comparison/competitors' },
       { text: '部署', link: '/deployment/' },
     ],
 
@@ -28,6 +30,21 @@ export default defineConfig({
             { text: '快速开始', link: '/guide/quickstart' },
             { text: '数据导入', link: '/guide/data-import' },
             { text: '微调支持', link: '/guide/fine-tuning' },
+            { text: '技术路线图', link: '/guide/roadmap' },
+          ],
+        },
+      ],
+      '/mvp/': [
+        {
+          text: 'MVP 版本',
+          items: [
+            { text: '概述', link: '/mvp/' },
+            { text: 'Git 仓库导入', link: '/mvp/git-import' },
+            { text: '文档目录导入', link: '/mvp/doc-import' },
+            { text: '基础 RAG Pipeline', link: '/mvp/rag-pipeline' },
+            { text: 'Docker Compose 编排', link: '/mvp/docker-setup' },
+            { text: 'API 服务', link: '/mvp/api-server' },
+            { text: 'CLI 命令行工具', link: '/mvp/cli' },
           ],
         },
       ],
@@ -56,6 +73,9 @@ export default defineConfig({
             { text: '重排序模型 (Reranker)', link: '/concepts/core/reranker' },
             { text: 'Prompt Engineering', link: '/concepts/core/prompt-engineering' },
             { text: '上下文窗口', link: '/concepts/core/context-window' },
+            { text: 'SSE 流式传输', link: '/concepts/core/sse' },
+            { text: 'RAG 评估指标', link: '/concepts/core/evaluation' },
+            { text: 'OpenAI 兼容 API', link: '/concepts/core/openai-api' },
           ],
         },
         {
@@ -65,6 +85,8 @@ export default defineConfig({
             { text: 'Tree-sitter 与 AST', link: '/concepts/data/tree-sitter' },
             { text: '分词与 Token', link: '/concepts/data/tokenization' },
             { text: 'Whisper 语音识别', link: '/concepts/data/whisper' },
+            { text: '元数据与知识图谱', link: '/concepts/data/metadata' },
+            { text: '增量更新机制', link: '/concepts/data/incremental-update' },
           ],
         },
         {
@@ -84,6 +106,20 @@ export default defineConfig({
             { text: 'LlamaIndex RAG 框架', link: '/concepts/tools/llamaindex' },
             { text: 'BGE-M3 嵌入模型', link: '/concepts/tools/bgem3' },
             { text: 'Docker Compose', link: '/concepts/tools/docker-compose' },
+          ],
+        },
+      ],
+      '/comparison/': [
+        {
+          text: '横向对比',
+          items: [
+            { text: '竞品分析', link: '/comparison/competitors' },
+            { text: 'RAG 框架对比', link: '/comparison/rag-frameworks' },
+            { text: '向量数据库对比', link: '/comparison/vector-databases' },
+            { text: 'LLM 推理引擎对比', link: '/comparison/llm-inference' },
+            { text: 'Embedding 模型对比', link: '/comparison/embedding-models' },
+            { text: 'Reranker 模型对比', link: '/comparison/reranker-models' },
+            { text: '代码解析方案对比', link: '/comparison/code-parsing' },
           ],
         },
       ],
