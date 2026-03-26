@@ -1,6 +1,14 @@
-# Delphi
+<div align="center">
+  <img src="logo.webp" alt="Delphi Logo" width="200">
+  <h1>Delphi</h1>
+  <p>可离线部署的本地知识库系统</p>
+  <p>导入代码仓库、技术文档、音视频，即可获得基于 RAG 的智能问答能力</p>
+  <p>
+    <a href="https://sakurapuare.github.io/Delphi/">📖 文档</a>
+  </p>
+</div>
 
-一款可离线部署的本地知识库系统。导入代码仓库、技术文档、音视频，即可获得基于 RAG 的智能问答能力。
+---
 
 ## 核心特性
 
