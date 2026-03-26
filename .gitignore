@@ -1,0 +1,12 @@
+# VitePress specific
+.vitepress/dist
+.vitepress/cache
+
+# Standard Node.js
+node_modules/
+dist/
+
+# OS/IDE specific
+.DS_Store
+.idea/
+.vscode/

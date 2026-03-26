@@ -1,0 +1,26 @@
+{
+  "name": "delphi",
+  "version": "1.0.0",
+  "description": "一款可离线部署的本地知识库系统。导入代码仓库、技术文档、音视频，即可获得基于 RAG 的智能问答能力。",
+  "main": "index.js",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SakuraPuare/Delphi.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/SakuraPuare/Delphi/issues"
+  },
+  "homepage": "https://github.com/SakuraPuare/Delphi#readme",
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
