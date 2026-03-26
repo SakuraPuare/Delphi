@@ -22,5 +22,9 @@
   "homepage": "https://github.com/SakuraPuare/Delphi#readme",
   "devDependencies": {
     "vitepress": "^1.6.4"
+  },
+  "dependencies": {
+    "mermaid": "^11.13.0",
+    "vitepress-plugin-mermaid": "^2.0.17"
   }
 }

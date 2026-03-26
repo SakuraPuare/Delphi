@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'Delphi',
   description: '可离线部署的本地知识库系统',
   lang: 'zh-CN',
@@ -150,4 +151,6 @@ export default defineConfig({
       next: '下一页',
     },
   },
-})
+
+  mermaid: {},
+}))
