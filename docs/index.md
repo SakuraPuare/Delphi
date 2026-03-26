@@ -4,6 +4,9 @@ layout: home
 hero:
   name: Delphi
   text: 可离线部署的本地知识库系统
+  image:
+    src: /logo.webp
+    alt: Delphi Logo
   tagline: 导入代码仓库、技术文档、音视频，即可获得基于 RAG 的智能问答能力
   actions:
     - theme: brand

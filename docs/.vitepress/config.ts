@@ -6,7 +6,11 @@ export default defineConfig({
   lang: 'zh-CN',
   base: '/Delphi/',
 
+  head: [['link', { rel: 'icon', href: '/Delphi/logo.webp' }]],
+
   themeConfig: {
+    logo: '/logo.webp',
+
     nav: [
       { text: '首页', link: '/' },
       { text: '指南', link: '/guide/' },
