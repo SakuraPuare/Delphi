@@ -213,7 +213,7 @@ context:
 ## 延伸阅读
 
 - [大语言模型基础](./llm.md)
-- [分词与 Token](./tokenization.md)
+- [分词与 Token](../data/tokenization.md)
 - [混合检索](./hybrid-search.md)
 - [Lost in the Middle 论文](https://arxiv.org/abs/2307.03172)
 - [YaRN 论文](https://arxiv.org/abs/2309.00071)

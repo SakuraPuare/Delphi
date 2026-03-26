@@ -234,7 +234,7 @@ embedding:
 ## 延伸阅读
 
 - [大语言模型基础](./llm.md)
-- [分词与 Token](./tokenization.md)
+- [分词与 Token](../data/tokenization.md)
 - [上下文窗口](./context-window.md)
 - [BGE-M3 论文](https://arxiv.org/abs/2309.07597)
 - [RRF 原始论文](https://dl.acm.org/doi/10.1145/1571941.1572114)

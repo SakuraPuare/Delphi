@@ -207,7 +207,7 @@ indexing:
 
 ## 延伸阅读
 
-- [上下文窗口](./context-window.md)
-- [混合检索](./hybrid-search.md)
-- [大语言模型基础](./llm.md)
+- [上下文窗口](../core/context-window.md)
+- [混合检索](../core/hybrid-search.md)
+- [大语言模型基础](../core/llm.md)
 - [BPE 原始论文](https://arxiv.org/abs/1508.07909)

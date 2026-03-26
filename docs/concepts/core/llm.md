@@ -149,6 +149,6 @@ llm:
 
 ## 延伸阅读
 
-- [分词与 Token](./tokenization.md)
+- [分词与 Token](../data/tokenization.md)
 - [上下文窗口](./context-window.md)
 - [Attention Is All You Need（原始论文）](https://arxiv.org/abs/1706.03762)
