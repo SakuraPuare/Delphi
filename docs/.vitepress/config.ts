@@ -114,6 +114,7 @@ export default defineConfig({
           text: '横向对比',
           items: [
             { text: '竞品分析', link: '/comparison/competitors' },
+            { text: '开发语言选型', link: '/comparison/languages' },
             { text: 'RAG 框架对比', link: '/comparison/rag-frameworks' },
             { text: '向量数据库对比', link: '/comparison/vector-databases' },
             { text: 'LLM 推理引擎对比', link: '/comparison/llm-inference' },
