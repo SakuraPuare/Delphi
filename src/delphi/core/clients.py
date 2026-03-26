@@ -39,8 +39,8 @@ class VectorStore:
 
     VECTOR_SIZE = 1024  # BGE-M3 dense vector dimension
 
-    def __init__(self, url: str | None = None) -> None:
-        self._client = AsyncQdrantClient(url=url or settings.qdrant_url)
+    def __init__(self, url: str | None = None, *, client: AsyncQdrantClient | None = None) -> None:
+        self._client = client or AsyncQdrantClient(url=url or settings.qdrant_url)
 
     async def ensure_collection(self, name: str) -> None:
         collections = await self._client.get_collections()
@@ -95,11 +95,12 @@ class VectorStore:
         vector: list[float],
         top_k: int = 5,
     ) -> list[models.ScoredPoint]:
-        return await self._client.query_points(
+        result = await self._client.query_points(
             collection_name=collection,
             query=vector,
             limit=top_k,
-        ).points
+        )
+        return result.points
 
     async def count(self, collection: str) -> int:
         info = await self._client.get_collection(collection_name=collection)

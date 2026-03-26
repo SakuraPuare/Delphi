@@ -48,7 +48,7 @@ async def retrieve(
         payload = point.payload or {}
         chunks.append(
             ScoredChunk(
-                content=payload.get("content", ""),
+                content=payload.get("text", payload.get("content", "")),
                 file_path=payload.get("file_path", ""),
                 start_line=payload.get("start_line"),
                 end_line=payload.get("end_line"),
