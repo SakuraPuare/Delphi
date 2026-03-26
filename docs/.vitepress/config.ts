@@ -11,6 +11,7 @@ export default defineConfig({
       { text: '首页', link: '/' },
       { text: '指南', link: '/guide/' },
       { text: '架构', link: '/architecture/' },
+      { text: '概念', link: '/concepts/core/rag' },
       { text: '部署', link: '/deployment/' },
     ],
 
@@ -36,6 +37,49 @@ export default defineConfig({
             { text: '模型选型', link: '/architecture/models' },
             { text: '向量数据库', link: '/architecture/vector-db' },
             { text: '推理引擎', link: '/architecture/inference' },
+          ],
+        },
+      ],
+      '/concepts/': [
+        {
+          text: '核心概念',
+          items: [
+            { text: '检索增强生成 (RAG)', link: '/concepts/core/rag' },
+            { text: '大语言模型 (LLM)', link: '/concepts/core/llm' },
+            { text: '向量嵌入 (Embedding)', link: '/concepts/core/embedding' },
+            { text: '向量数据库', link: '/concepts/core/vector-database' },
+            { text: '混合检索', link: '/concepts/core/hybrid-search' },
+            { text: '重排序模型 (Reranker)', link: '/concepts/core/reranker' },
+            { text: 'Prompt Engineering', link: '/concepts/core/prompt-engineering' },
+            { text: '上下文窗口', link: '/concepts/core/context-window' },
+          ],
+        },
+        {
+          text: '数据处理',
+          items: [
+            { text: '文本切分策略 (Chunking)', link: '/concepts/data/chunking' },
+            { text: 'Tree-sitter 与 AST', link: '/concepts/data/tree-sitter' },
+            { text: '分词与 Token', link: '/concepts/data/tokenization' },
+            { text: 'Whisper 语音识别', link: '/concepts/data/whisper' },
+          ],
+        },
+        {
+          text: '模型技术',
+          items: [
+            { text: '模型量化 (Quantization)', link: '/concepts/model/quantization' },
+            { text: 'LoRA 与 QLoRA 微调', link: '/concepts/model/lora' },
+            { text: 'PagedAttention 与推理优化', link: '/concepts/model/paged-attention' },
+            { text: '混合专家模型 (MoE)', link: '/concepts/model/moe' },
+          ],
+        },
+        {
+          text: '工具与框架',
+          items: [
+            { text: 'vLLM 推理引擎', link: '/concepts/tools/vllm' },
+            { text: 'Qdrant 向量数据库', link: '/concepts/tools/qdrant' },
+            { text: 'LlamaIndex RAG 框架', link: '/concepts/tools/llamaindex' },
+            { text: 'BGE-M3 嵌入模型', link: '/concepts/tools/bgem3' },
+            { text: 'Docker Compose', link: '/concepts/tools/docker-compose' },
           ],
         },
       ],
