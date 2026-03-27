@@ -14,6 +14,7 @@ from delphi.api.models import (
     SymbolInfo,
     TaskInfo,
 )
+from delphi.api.websocket import task_manager
 from delphi.graph.extractor import extract_from_directory
 from delphi.ingestion.pipeline import create_task
 
@@ -30,11 +31,14 @@ async def _build_graph(task_id: str, request: Request, body: GraphBuildRequest) 
 
     task = _tasks[task_id]
     task["status"] = "running"
+    task_manager.update_progress(task_id, 0, "开始构建代码图谱")
 
     try:
         root = Path(body.path)
         if not root.exists():
             raise FileNotFoundError(f"路径不存在: {body.path}")
+
+        task_manager.update_progress(task_id, 10, "提取代码符号中")
 
         graph = await asyncio.to_thread(
             extract_from_directory,
@@ -43,6 +47,8 @@ async def _build_graph(task_id: str, request: Request, body: GraphBuildRequest) 
             exclude=body.exclude or None,
         )
 
+        task_manager.update_progress(task_id, 80, "保存图谱数据")
+
         store = request.app.state.graph_store
         store.save(body.project, graph)
 
@@ -50,17 +56,19 @@ async def _build_graph(task_id: str, request: Request, body: GraphBuildRequest) 
         task["processed"] = len(graph.symbols)
         task["progress"] = 1.0
         task["status"] = "done"
+        task_manager.complete_task(task_id, {"symbols": len(graph.symbols)})
 
     except Exception as e:
         logger.error("Graph build failed: %s", e, exc_info=True)
         task["status"] = "failed"
         task["error"] = str(e)
+        task_manager.fail_task(task_id, str(e))
 
 
 @router.post("/build", response_model=TaskInfo, status_code=202)
 async def build_graph(body: GraphBuildRequest, request: Request) -> TaskInfo:
     """构建代码图谱（后台任务）"""
-    task_id = create_task()
+    task_id = create_task(task_type="graph_build")
     asyncio.create_task(_build_graph(task_id, request, body))
     return TaskInfo(task_id=task_id, status="pending")
 

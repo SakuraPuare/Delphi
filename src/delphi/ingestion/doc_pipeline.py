@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from delphi.api.websocket import task_manager
 from delphi.ingestion.doc_chunker import chunk_doc_file
 from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
 from delphi.ingestion.pipeline import EMBED_BATCH, _tasks
@@ -56,6 +57,7 @@ async def run_doc_import(
     """Full doc import pipeline. Runs as a background task."""
     task = _tasks[task_id]
     task["status"] = "running"
+    task_manager.update_progress(task_id, 0, "开始扫描文档目录")
 
     if file_types is None:
         file_types = ["md", "txt"]
@@ -67,6 +69,7 @@ async def run_doc_import(
 
         files = _collect_doc_files(root, recursive, file_types)
         logger.info("Collected %d doc files from %s", len(files), path)
+        task_manager.update_progress(task_id, 5, f"收集到 {len(files)} 个文档，计算增量差异")
 
         # Incremental: compute hashes & diff against existing
         await vector_store.ensure_collection(project)
@@ -102,7 +105,10 @@ async def run_doc_import(
         if not changed_files:
             logger.info("No changes detected, skipping doc import for %s", project)
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
+
+        task_manager.update_progress(task_id, 15, f"发现 {len(changed_files)} 个变更文件，开始解析分块")
 
         all_chunks: list[Chunk] = []
         for i, fpath in enumerate(changed_files):
@@ -118,15 +124,21 @@ async def run_doc_import(
                 logger.warning("Failed to parse %s, skipping", fpath, exc_info=True)
             task["processed"] = i + 1
             task["progress"] = (i + 1) / len(changed_files) if changed_files else 1.0
+            chunk_progress = 15 + (i + 1) / len(changed_files) * 45
+            task_manager.update_progress(task_id, chunk_progress, f"解析分块: {i + 1}/{len(changed_files)}")
 
         logger.info("Generated %d chunks from %d changed files", len(all_chunks), len(changed_files))
 
         if not all_chunks:
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
 
+        task_manager.update_progress(task_id, 60, f"生成 {len(all_chunks)} 个分块，开始 embedding")
+
         t0 = time.monotonic()
-        for i in range(0, len(all_chunks), EMBED_BATCH):
+        total_batches = (len(all_chunks) + EMBED_BATCH - 1) // EMBED_BATCH
+        for batch_idx, i in enumerate(range(0, len(all_chunks), EMBED_BATCH)):
             batch = all_chunks[i : i + EMBED_BATCH]
             texts = [c.text for c in batch]
             result = await embedding.embed_all(texts)
@@ -135,12 +147,19 @@ async def run_doc_import(
             payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
             await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse or None)
 
+            embed_progress = 60 + (batch_idx + 1) / total_batches * 35
+            task_manager.update_progress(
+                task_id, embed_progress, f"Embedding & 存储: {batch_idx + 1}/{total_batches}"
+            )
+
         elapsed = time.monotonic() - t0
         logger.info("Embedded & stored %d chunks in %.1fs", len(all_chunks), elapsed)
 
         task["status"] = "done"
+        task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
 
     except Exception as e:
         logger.error("Doc import failed: %s", e, exc_info=True)
         task["status"] = "failed"
         task["error"] = str(e)
+        task_manager.fail_task(task_id, str(e))

@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from delphi.api.websocket import task_manager
 from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
 from delphi.ingestion.media_chunker import MEDIA_EXTENSIONS, transcribe_and_chunk
 from delphi.ingestion.pipeline import EMBED_BATCH, _tasks
@@ -53,6 +54,7 @@ async def run_media_import(
     """音视频导入流水线，作为后台任务运行。"""
     task = _tasks[task_id]
     task["status"] = "running"
+    task_manager.update_progress(task_id, 0, "开始扫描音视频目录")
 
     try:
         root = Path(path)
@@ -61,6 +63,7 @@ async def run_media_import(
 
         files = _collect_media_files(root, recursive)
         logger.info("Collected %d media files from %s", len(files), path)
+        task_manager.update_progress(task_id, 5, f"收集到 {len(files)} 个媒体文件，计算增量差异")
 
         # 增量更新：计算 hash 并与已有数据对比
         await vector_store.ensure_collection(project)
@@ -96,7 +99,10 @@ async def run_media_import(
         if not changed_files:
             logger.info("No changes detected, skipping media import for %s", project)
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
+
+        task_manager.update_progress(task_id, 10, f"发现 {len(changed_files)} 个变更文件，开始转录分块")
 
         # 转录 & 切分
         all_chunks: list[Chunk] = []
@@ -113,16 +119,22 @@ async def run_media_import(
                 logger.warning("Failed to transcribe %s, skipping", fpath, exc_info=True)
             task["processed"] = i + 1
             task["progress"] = (i + 1) / len(changed_files) if changed_files else 1.0
+            chunk_progress = 10 + (i + 1) / len(changed_files) * 50
+            task_manager.update_progress(task_id, chunk_progress, f"转录分块: {i + 1}/{len(changed_files)}")
 
         logger.info("Generated %d chunks from %d changed media files", len(all_chunks), len(changed_files))
 
         if not all_chunks:
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
+
+        task_manager.update_progress(task_id, 60, f"生成 {len(all_chunks)} 个分块，开始 embedding")
 
         # Embed & 入库
         t0 = time.monotonic()
-        for i in range(0, len(all_chunks), EMBED_BATCH):
+        total_batches = (len(all_chunks) + EMBED_BATCH - 1) // EMBED_BATCH
+        for batch_idx, i in enumerate(range(0, len(all_chunks), EMBED_BATCH)):
             batch = all_chunks[i : i + EMBED_BATCH]
             texts = [c.text for c in batch]
             result = await embedding.embed_all(texts)
@@ -131,12 +143,19 @@ async def run_media_import(
             payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
             await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse)
 
+            embed_progress = 60 + (batch_idx + 1) / total_batches * 35
+            task_manager.update_progress(
+                task_id, embed_progress, f"Embedding & 存储: {batch_idx + 1}/{total_batches}"
+            )
+
         elapsed = time.monotonic() - t0
         logger.info("Embedded & stored %d media chunks in %.1fs", len(all_chunks), elapsed)
 
         task["status"] = "done"
+        task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
 
     except Exception as e:
         logger.error("Media import failed: %s", e, exc_info=True)
         task["status"] = "failed"
         task["error"] = str(e)
+        task_manager.fail_task(task_id, str(e))

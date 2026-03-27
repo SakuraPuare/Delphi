@@ -11,6 +11,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from delphi.api.websocket import task_manager
+from delphi.core.telemetry import get_tracer
 from delphi.ingestion.chunker import chunk_file
 from delphi.ingestion.git import clone_repo, collect_files
 from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
@@ -20,14 +22,15 @@ if TYPE_CHECKING:
     from delphi.ingestion.models import Chunk
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
 
-# In-memory task store (MVP)
+# In-memory task store (MVP) — 保留兼容性，同时同步到 TaskManager
 _tasks: dict[str, dict] = {}
 
 EMBED_BATCH = 32
 
 
-def create_task() -> str:
+def create_task(task_type: str = "import") -> str:
     task_id = uuid.uuid4().hex[:12]
     _tasks[task_id] = {
         "task_id": task_id,
@@ -37,6 +40,7 @@ def create_task() -> str:
         "processed": 0,
         "error": None,
     }
+    task_manager.create_task(task_type, task_id=task_id)
     return task_id
 
 
@@ -59,23 +63,31 @@ async def run_git_import(
     """Full git import pipeline. Runs as a background task."""
     task = _tasks[task_id]
     task["status"] = "running"
+    task_manager.update_progress(task_id, 0, "开始克隆仓库")
     tmp_dir = None
 
     try:
         # 1. Clone
-        is_local = not url.startswith(("http://", "https://", "git@", "ssh://"))
-        if is_local:
-            repo_path = Path(url)
-            if not repo_path.exists():
-                raise FileNotFoundError(f"路径不存在: {url}")
-        else:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="delphi-"))
-            repo_path = tmp_dir / "repo"
-            await clone_repo(url, repo_path, branch=branch, depth=depth)
+        with _tracer.start_as_current_span("pipeline.git_clone") as clone_span:
+            clone_span.set_attribute("pipeline.url", url)
+            clone_span.set_attribute("pipeline.branch", branch)
+            is_local = not url.startswith(("http://", "https://", "git@", "ssh://"))
+            if is_local:
+                repo_path = Path(url)
+                if not repo_path.exists():
+                    raise FileNotFoundError(f"路径不存在: {url}")
+            else:
+                tmp_dir = Path(tempfile.mkdtemp(prefix="delphi-"))
+                repo_path = tmp_dir / "repo"
+                await clone_repo(url, repo_path, branch=branch, depth=depth)
+
+        task_manager.update_progress(task_id, 5, "仓库克隆完成，收集文件中")
 
         # 2. Collect files
         files = collect_files(repo_path, include=include, exclude=exclude)
         logger.info("Collected %d files from %s", len(files), url)
+
+        task_manager.update_progress(task_id, 10, f"收集到 {len(files)} 个文件，计算增量差异")
 
         # 3. Incremental: compute hashes & diff against existing
         await vector_store.ensure_collection(project)
@@ -111,50 +123,74 @@ async def run_git_import(
         if not changed_files:
             logger.info("No changes detected, skipping import for %s", project)
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
 
+        task_manager.update_progress(task_id, 15, f"发现 {len(changed_files)} 个变更文件，开始解析分块")
+
         # 4. Parse & chunk (only changed files)
-        all_chunks: list[Chunk] = []
-        for i, fpath in enumerate(changed_files):
-            try:
-                rel_path = fpath.relative_to(repo_path)
-                chunks = chunk_file(fpath, repo_url=url)
-                current_hash = file_hash_map[str(rel_path)]
-                for c in chunks:
-                    c.metadata.file_path = str(rel_path)
-                    c.metadata.file_hash = current_hash
-                all_chunks.extend(chunks)
-            except Exception:
-                logger.warning("Failed to parse %s, skipping", fpath, exc_info=True)
-            task["processed"] = i + 1
-            task["progress"] = (i + 1) / len(changed_files) if changed_files else 1.0
+        with _tracer.start_as_current_span("pipeline.parse_chunk") as pc_span:
+            pc_span.set_attribute("pipeline.num_changed_files", len(changed_files))
+            all_chunks: list[Chunk] = []
+            for i, fpath in enumerate(changed_files):
+                try:
+                    rel_path = fpath.relative_to(repo_path)
+                    chunks = chunk_file(fpath, repo_url=url)
+                    current_hash = file_hash_map[str(rel_path)]
+                    for c in chunks:
+                        c.metadata.file_path = str(rel_path)
+                        c.metadata.file_hash = current_hash
+                    all_chunks.extend(chunks)
+                except Exception:
+                    logger.warning("Failed to parse %s, skipping", fpath, exc_info=True)
+                task["processed"] = i + 1
+                task["progress"] = (i + 1) / len(changed_files) if changed_files else 1.0
+                # 解析阶段占 15%-60%
+                chunk_progress = 15 + (i + 1) / len(changed_files) * 45
+                task_manager.update_progress(task_id, chunk_progress, f"解析分块: {i + 1}/{len(changed_files)}")
+            pc_span.set_attribute("pipeline.num_chunks", len(all_chunks))
 
         logger.info("Generated %d chunks from %d changed files", len(all_chunks), len(changed_files))
 
         if not all_chunks:
             task["status"] = "done"
+            task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
 
+        task_manager.update_progress(task_id, 60, f"生成 {len(all_chunks)} 个分块，开始 embedding")
+
         # 5. Embed & upsert in batches (dense + sparse)
-        t0 = time.monotonic()
-        for i in range(0, len(all_chunks), EMBED_BATCH):
-            batch = all_chunks[i : i + EMBED_BATCH]
-            texts = [c.text for c in batch]
-            result = await embedding.embed_all(texts)
+        with _tracer.start_as_current_span("pipeline.embed_store") as es_span:
+            es_span.set_attribute("pipeline.num_chunks", len(all_chunks))
+            t0 = time.monotonic()
+            total_batches = (len(all_chunks) + EMBED_BATCH - 1) // EMBED_BATCH
+            for batch_idx, i in enumerate(range(0, len(all_chunks), EMBED_BATCH)):
+                batch = all_chunks[i : i + EMBED_BATCH]
+                texts = [c.text for c in batch]
+                result = await embedding.embed_all(texts)
 
-            ids = [uuid.uuid4().hex for _ in batch]
-            payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
-            await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse or None)
+                ids = [uuid.uuid4().hex for _ in batch]
+                payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
+                await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse or None)
 
-        elapsed = time.monotonic() - t0
-        logger.info("Embedded & stored %d chunks in %.1fs", len(all_chunks), elapsed)
+                # embedding 阶段占 60%-95%
+                embed_progress = 60 + (batch_idx + 1) / total_batches * 35
+                task_manager.update_progress(
+                    task_id, embed_progress, f"Embedding & 存储: {batch_idx + 1}/{total_batches}"
+                )
+
+            elapsed = time.monotonic() - t0
+            es_span.set_attribute("pipeline.embed_store.latency_s", round(elapsed, 2))
+            logger.info("Embedded & stored %d chunks in %.1fs", len(all_chunks), elapsed)
 
         task["status"] = "done"
+        task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
 
     except Exception as e:
         logger.error("Import failed: %s", e, exc_info=True)
         task["status"] = "failed"
         task["error"] = str(e)
+        task_manager.fail_task(task_id, str(e))
 
     finally:
         if tmp_dir and tmp_dir.exists():
