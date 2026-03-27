@@ -28,8 +28,9 @@ class GraphStore:
         self._graphs[project] = graph
         path = self._path(project)
         path.write_text(json.dumps(graph.to_dict(), ensure_ascii=False, indent=2))
-        logger.info("Saved graph for '%s' (%d symbols, %d relations)",
-                     project, len(graph.symbols), len(graph.relations))
+        logger.info(
+            "Saved graph for '%s' (%d symbols, %d relations)", project, len(graph.symbols), len(graph.relations)
+        )
 
     def load(self, project: str) -> CodeGraph | None:
         """从 JSON 文件加载图谱"""

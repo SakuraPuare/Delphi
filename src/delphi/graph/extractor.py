@@ -67,11 +67,7 @@ class CodeGraph:
 
     def get_dependencies(self, file_path: str) -> list[Relation]:
         """获取文件的 import 依赖"""
-        return [
-            r
-            for r in self.relations
-            if r.source.startswith(file_path) and r.kind == "imports"
-        ]
+        return [r for r in self.relations if r.source.startswith(file_path) and r.kind == "imports"]
 
     def to_dict(self) -> dict:
         """序列化为 JSON 兼容的字典"""
@@ -146,9 +142,13 @@ def _extract_python(root: Node, file_path: str, graph: CodeGraph) -> None:
     for child in root.children:
         # imports
         if child.type == "import_statement" or child.type == "import_from_statement":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         # top-level functions
         elif child.type == "function_definition":
             _extract_python_function(child, file_path, "", graph)
@@ -158,20 +158,32 @@ def _extract_python(root: Node, file_path: str, graph: CodeGraph) -> None:
 
 
 def _extract_python_function(
-    node: Node, file_path: str, parent: str, graph: CodeGraph,
+    node: Node,
+    file_path: str,
+    parent: str,
+    graph: CodeGraph,
 ) -> None:
     name = _find_name(node)
     qn = _qualified(file_path, parent, name) if parent else _qualified(file_path, name)
-    graph.add_symbol(Symbol(
-        name=name, qualified_name=qn, kind="method" if parent else "function",
-        file_path=file_path,
-        start_line=node.start_point.row + 1, end_line=node.end_point.row + 1,
-        language="python",
-    ))
+    graph.add_symbol(
+        Symbol(
+            name=name,
+            qualified_name=qn,
+            kind="method" if parent else "function",
+            file_path=file_path,
+            start_line=node.start_point.row + 1,
+            end_line=node.end_point.row + 1,
+            language="python",
+        )
+    )
     if parent:
-        graph.add_relation(Relation(
-            source=_qualified(file_path, parent), target=qn, kind="contains",
-        ))
+        graph.add_relation(
+            Relation(
+                source=_qualified(file_path, parent),
+                target=qn,
+                kind="contains",
+            )
+        )
     # calls inside body
     body = node.child_by_field_name("body")
     if body:
@@ -184,12 +196,17 @@ def _extract_python_function(
 def _extract_python_class(node: Node, file_path: str, graph: CodeGraph) -> None:
     name = _find_name(node)
     qn = _qualified(file_path, name)
-    graph.add_symbol(Symbol(
-        name=name, qualified_name=qn, kind="class",
-        file_path=file_path,
-        start_line=node.start_point.row + 1, end_line=node.end_point.row + 1,
-        language="python",
-    ))
+    graph.add_symbol(
+        Symbol(
+            name=name,
+            qualified_name=qn,
+            kind="class",
+            file_path=file_path,
+            start_line=node.start_point.row + 1,
+            end_line=node.end_point.row + 1,
+            language="python",
+        )
+    )
     # inheritance
     for child in node.children:
         if child.type == "argument_list":
@@ -215,9 +232,13 @@ def _extract_js(root: Node, file_path: str, lang: str, graph: CodeGraph) -> None
     """提取 JS/TS 文件中的符号和关系"""
     for child in root.children:
         if child.type == "import_statement":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         elif child.type == "export_statement":
             # export may wrap a function/class declaration
             for sub in child.children:
@@ -227,7 +248,11 @@ def _extract_js(root: Node, file_path: str, lang: str, graph: CodeGraph) -> None
 
 
 def _extract_js_node(
-    node: Node, file_path: str, parent: str, lang: str, graph: CodeGraph,
+    node: Node,
+    file_path: str,
+    parent: str,
+    lang: str,
+    graph: CodeGraph,
 ) -> None:
     if node.type in _JS_FUNC_TYPES:
         name = _find_name(node)
@@ -235,16 +260,25 @@ def _extract_js_node(
             name = _find_name(node.parent)
         qn = _qualified(file_path, parent, name) if parent else _qualified(file_path, name)
         kind = "method" if parent else "function"
-        graph.add_symbol(Symbol(
-            name=name, qualified_name=qn, kind=kind,
-            file_path=file_path,
-            start_line=node.start_point.row + 1, end_line=node.end_point.row + 1,
-            language=lang,
-        ))
+        graph.add_symbol(
+            Symbol(
+                name=name,
+                qualified_name=qn,
+                kind=kind,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language=lang,
+            )
+        )
         if parent:
-            graph.add_relation(Relation(
-                source=_qualified(file_path, parent), target=qn, kind="contains",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=_qualified(file_path, parent),
+                    target=qn,
+                    kind="contains",
+                )
+            )
         body = node.child_by_field_name("body")
         if body:
             calls: list[str] = []
@@ -255,12 +289,17 @@ def _extract_js_node(
     elif node.type == "class_declaration":
         name = _find_name(node)
         qn = _qualified(file_path, name)
-        graph.add_symbol(Symbol(
-            name=name, qualified_name=qn, kind="class",
-            file_path=file_path,
-            start_line=node.start_point.row + 1, end_line=node.end_point.row + 1,
-            language=lang,
-        ))
+        graph.add_symbol(
+            Symbol(
+                name=name,
+                qualified_name=qn,
+                kind="class",
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language=lang,
+            )
+        )
         # heritage / extends
         for child in node.children:
             if child.type == "class_heritage":
@@ -282,9 +321,13 @@ def _extract_c(root: Node, file_path: str, lang: str, graph: CodeGraph) -> None:
     """提取 C/C++ 文件中的符号和关系"""
     for child in root.children:
         if child.type == "preproc_include":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         elif child.type == "function_definition":
             name = ""
             declarator = child.child_by_field_name("declarator")
@@ -293,13 +336,17 @@ def _extract_c(root: Node, file_path: str, lang: str, graph: CodeGraph) -> None:
                 if not name:
                     name = _find_name(child)
             qn = _qualified(file_path, name)
-            graph.add_symbol(Symbol(
-                name=name, qualified_name=qn, kind="function",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language=lang,
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=name,
+                    qualified_name=qn,
+                    kind="function",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language=lang,
+                )
+            )
             body = child.child_by_field_name("body")
             if body:
                 calls: list[str] = []
@@ -317,19 +364,27 @@ def _extract_go(root: Node, file_path: str, graph: CodeGraph) -> None:
     """提取 Go 文件中的符号和关系"""
     for child in root.children:
         if child.type == "import_declaration":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         elif child.type == "function_declaration":
             name = _find_name(child)
             qn = _qualified(file_path, name)
-            graph.add_symbol(Symbol(
-                name=name, qualified_name=qn, kind="function",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language="go",
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=name,
+                    qualified_name=qn,
+                    kind="function",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language="go",
+                )
+            )
             body = child.child_by_field_name("body")
             if body:
                 calls: list[str] = []
@@ -339,13 +394,17 @@ def _extract_go(root: Node, file_path: str, graph: CodeGraph) -> None:
         elif child.type == "method_declaration":
             name = _find_name(child)
             qn = _qualified(file_path, name)
-            graph.add_symbol(Symbol(
-                name=name, qualified_name=qn, kind="method",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language="go",
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=name,
+                    qualified_name=qn,
+                    kind="method",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language="go",
+                )
+            )
             body = child.child_by_field_name("body")
             if body:
                 calls: list[str] = []
@@ -363,19 +422,27 @@ def _extract_rust(root: Node, file_path: str, graph: CodeGraph) -> None:
     """提取 Rust 文件中的符号和关系"""
     for child in root.children:
         if child.type == "use_declaration":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         elif child.type == "function_item":
             name = _find_name(child)
             qn = _qualified(file_path, name)
-            graph.add_symbol(Symbol(
-                name=name, qualified_name=qn, kind="function",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language="rust",
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=name,
+                    qualified_name=qn,
+                    kind="function",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language="rust",
+                )
+            )
             body = child.child_by_field_name("body")
             if body:
                 calls: list[str] = []
@@ -385,29 +452,41 @@ def _extract_rust(root: Node, file_path: str, graph: CodeGraph) -> None:
         elif child.type == "impl_item":
             impl_name = _find_name(child)
             qn_impl = _qualified(file_path, impl_name)
-            graph.add_symbol(Symbol(
-                name=impl_name, qualified_name=qn_impl, kind="class",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language="rust",
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=impl_name,
+                    qualified_name=qn_impl,
+                    kind="class",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language="rust",
+                )
+            )
             body = child.child_by_field_name("body")
             if body:
                 for sub in body.children:
                     if sub.type == "function_item":
                         fn_name = _find_name(sub)
                         fn_qn = _qualified(file_path, impl_name, fn_name)
-                        graph.add_symbol(Symbol(
-                            name=fn_name, qualified_name=fn_qn, kind="method",
-                            file_path=file_path,
-                            start_line=sub.start_point.row + 1,
-                            end_line=sub.end_point.row + 1,
-                            language="rust",
-                        ))
-                        graph.add_relation(Relation(
-                            source=qn_impl, target=fn_qn, kind="contains",
-                        ))
+                        graph.add_symbol(
+                            Symbol(
+                                name=fn_name,
+                                qualified_name=fn_qn,
+                                kind="method",
+                                file_path=file_path,
+                                start_line=sub.start_point.row + 1,
+                                end_line=sub.end_point.row + 1,
+                                language="rust",
+                            )
+                        )
+                        graph.add_relation(
+                            Relation(
+                                source=qn_impl,
+                                target=fn_qn,
+                                kind="contains",
+                            )
+                        )
                         fn_body = sub.child_by_field_name("body")
                         if fn_body:
                             fn_calls: list[str] = []
@@ -417,13 +496,17 @@ def _extract_rust(root: Node, file_path: str, graph: CodeGraph) -> None:
         elif child.type == "struct_item":
             name = _find_name(child)
             qn = _qualified(file_path, name)
-            graph.add_symbol(Symbol(
-                name=name, qualified_name=qn, kind="class",
-                file_path=file_path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                language="rust",
-            ))
+            graph.add_symbol(
+                Symbol(
+                    name=name,
+                    qualified_name=qn,
+                    kind="class",
+                    file_path=file_path,
+                    start_line=child.start_point.row + 1,
+                    end_line=child.end_point.row + 1,
+                    language="rust",
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -435,25 +518,36 @@ def _extract_java(root: Node, file_path: str, graph: CodeGraph) -> None:
     """提取 Java 文件中的符号和关系"""
     for child in root.children:
         if child.type == "import_declaration":
-            graph.add_relation(Relation(
-                source=file_path, target=_node_text(child).strip(), kind="imports",
-            ))
+            graph.add_relation(
+                Relation(
+                    source=file_path,
+                    target=_node_text(child).strip(),
+                    kind="imports",
+                )
+            )
         elif child.type == "class_declaration":
             _extract_java_class(child, file_path, "", graph)
 
 
 def _extract_java_class(
-    node: Node, file_path: str, parent: str, graph: CodeGraph,
+    node: Node,
+    file_path: str,
+    parent: str,
+    graph: CodeGraph,
 ) -> None:
     name = _find_name(node)
     qn = _qualified(file_path, parent, name) if parent else _qualified(file_path, name)
-    graph.add_symbol(Symbol(
-        name=name, qualified_name=qn, kind="class",
-        file_path=file_path,
-        start_line=node.start_point.row + 1,
-        end_line=node.end_point.row + 1,
-        language="java",
-    ))
+    graph.add_symbol(
+        Symbol(
+            name=name,
+            qualified_name=qn,
+            kind="class",
+            file_path=file_path,
+            start_line=node.start_point.row + 1,
+            end_line=node.end_point.row + 1,
+            language="java",
+        )
+    )
     # superclass
     sc = node.child_by_field_name("superclass")
     if sc:
@@ -471,13 +565,17 @@ def _extract_java_class(
             if child.type == "method_declaration":
                 m_name = _find_name(child)
                 m_qn = _qualified(file_path, name, m_name)
-                graph.add_symbol(Symbol(
-                    name=m_name, qualified_name=m_qn, kind="method",
-                    file_path=file_path,
-                    start_line=child.start_point.row + 1,
-                    end_line=child.end_point.row + 1,
-                    language="java",
-                ))
+                graph.add_symbol(
+                    Symbol(
+                        name=m_name,
+                        qualified_name=m_qn,
+                        kind="method",
+                        file_path=file_path,
+                        start_line=child.start_point.row + 1,
+                        end_line=child.end_point.row + 1,
+                        language="java",
+                    )
+                )
                 graph.add_relation(Relation(source=qn, target=m_qn, kind="contains"))
                 m_body = child.child_by_field_name("body")
                 if m_body:

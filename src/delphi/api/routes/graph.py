@@ -87,19 +87,13 @@ async def query_symbol(project: str, name: str, request: Request) -> GraphQueryR
         raise HTTPException(404, detail=f"图谱 '{project}' 不存在")
 
     # 查找匹配的符号（支持部分匹配）
-    matched_symbols = [
-        s for s in graph.symbols.values()
-        if name in s.qualified_name or name == s.name
-    ]
+    matched_symbols = [s for s in graph.symbols.values() if name in s.qualified_name or name == s.name]
     if not matched_symbols:
         raise HTTPException(404, detail=f"符号 '{name}' 未找到")
 
     # 收集相关关系
     qnames = {s.qualified_name for s in matched_symbols}
-    related = [
-        r for r in graph.relations
-        if r.source in qnames or r.target in qnames
-    ]
+    related = [r for r in graph.relations if r.source in qnames or r.target in qnames]
     return GraphQueryResponse(
         symbols=[SymbolInfo(**s.__dict__) for s in matched_symbols],
         relations=[RelationInfo(**r.__dict__) for r in related],
@@ -114,14 +108,8 @@ async def query_file(project: str, path: str, request: Request) -> GraphQueryRes
     if graph is None:
         raise HTTPException(404, detail=f"图谱 '{project}' 不存在")
 
-    file_symbols = [
-        s for s in graph.symbols.values()
-        if s.file_path == path
-    ]
-    file_relations = [
-        r for r in graph.relations
-        if r.source.startswith(path) or r.target.startswith(path)
-    ]
+    file_symbols = [s for s in graph.symbols.values() if s.file_path == path]
+    file_relations = [r for r in graph.relations if r.source.startswith(path) or r.target.startswith(path)]
     return GraphQueryResponse(
         symbols=[SymbolInfo(**s.__dict__) for s in file_symbols],
         relations=[RelationInfo(**r.__dict__) for r in file_relations],
