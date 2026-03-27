@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from delphi.core.config import settings
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -33,16 +35,48 @@ class ScoredChunk:
     score: float
 
 
+class RerankerClient:
+    """TEI Reranker 服务客户端"""
+
+    def __init__(self, base_url: str | None = None):
+        self.base_url = (base_url or settings.reranker_url).rstrip("/")
+        self._client = httpx.AsyncClient(timeout=60.0)
+
+    async def rerank(
+        self, query: str, texts: list[str], top_k: int | None = None
+    ) -> list[tuple[int, float]]:
+        """调用 TEI /rerank 接口，返回 [(original_index, score), ...] 按 score 降序"""
+        resp = await self._client.post(
+            f"{self.base_url}/rerank",
+            json={"query": query, "texts": texts, "truncate": True},
+        )
+        resp.raise_for_status()
+        results = resp.json()  # [{"index": 0, "score": 0.95}, ...]
+        ranked = sorted(results, key=lambda x: x["score"], reverse=True)
+        if top_k:
+            ranked = ranked[:top_k]
+        return [(r["index"], r["score"]) for r in ranked]
+
+    async def close(self):
+        await self._client.aclose()
+
+
 async def retrieve(
     question: str,
     project: str,
     top_k: int,
     embedding_client: EmbeddingClient,
     vector_store: VectorStore,
+    reranker: RerankerClient | None = None,
 ) -> list[ScoredChunk]:
-    vectors = await embedding_client.embed([question])
-    query_vector = vectors[0]
-    results = await vector_store.search(collection=project, vector=query_vector, top_k=top_k)
+    # 如果启用了 reranker，先用更大的 retrieve_top_k 召回
+    initial_top_k = settings.retrieve_top_k if reranker else top_k
+    embed_result = await embedding_client.embed_all([question])
+    query_vector = embed_result.dense[0]
+    query_sparse = embed_result.sparse[0]
+    results = await vector_store.search(
+        collection=project, vector=query_vector, sparse_vector=query_sparse, top_k=initial_top_k
+    )
     chunks: list[ScoredChunk] = []
     for point in results:
         payload = point.payload or {}
@@ -55,6 +89,23 @@ async def retrieve(
                 score=point.score,
             )
         )
+
+    # Rerank 阶段
+    if reranker and chunks:
+        texts = [c.content for c in chunks]
+        rerank_top_k = min(settings.reranker_top_k, top_k)
+        ranked = await reranker.rerank(query=question, texts=texts, top_k=rerank_top_k)
+        chunks = [
+            ScoredChunk(
+                content=chunks[idx].content,
+                file_path=chunks[idx].file_path,
+                start_line=chunks[idx].start_line,
+                end_line=chunks[idx].end_line,
+                score=score,
+            )
+            for idx, score in ranked
+        ]
+
     return chunks
 
 

@@ -37,6 +37,7 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
 
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
+    reranker = request.app.state.reranker
 
     chunks = await retrieve(
         question=body.question,
@@ -44,6 +45,7 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
         top_k=body.top_k,
         embedding_client=embedding_client,
         vector_store=vector_store,
+        reranker=reranker,
     )
 
     if not chunks:
@@ -61,6 +63,7 @@ async def query_stream(body: QueryRequest, request: Request):
 
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
+    reranker = request.app.state.reranker
 
     chunks = await retrieve(
         question=body.question,
@@ -68,6 +71,7 @@ async def query_stream(body: QueryRequest, request: Request):
         top_k=body.top_k,
         embedding_client=embedding_client,
         vector_store=vector_store,
+        reranker=reranker,
     )
 
     if not chunks:

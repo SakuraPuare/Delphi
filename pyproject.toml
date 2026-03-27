@@ -25,6 +25,8 @@ dependencies = [
     "tree-sitter-cpp>=0.23.4",
     "tree-sitter-java>=0.23.5",
     "pathspec>=0.12",
+    "pymupdf>=1.25",
+    "trafilatura>=2.0",
 ]
 
 [project.scripts]

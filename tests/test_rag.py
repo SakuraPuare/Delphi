@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from delphi.api.app import app
+from delphi.core.clients import EmbeddingResult, SparseVector
 from delphi.retrieval.rag import ScoredChunk, build_prompt
 
 # ---------------------------------------------------------------------------
@@ -35,7 +36,10 @@ SAMPLE_CHUNKS = [
 def _make_mock_app_state():
     """Return mocked embedding + vector_store attached to app.state."""
     embedding = AsyncMock()
-    embedding.embed = AsyncMock(return_value=[[0.1] * 1024])
+    fake_sparse = SparseVector(indices=[0, 1, 2], values=[0.1, 0.2, 0.3])
+    embedding.embed_all = AsyncMock(
+        return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
+    )
     vector_store = AsyncMock()
     return embedding, vector_store
 
@@ -67,6 +71,7 @@ def client():
     async def _test_lifespan(a):
         a.state.embedding = embedding
         a.state.vector_store = vector_store
+        a.state.reranker = None
         yield
 
     original_lifespan = app.router.lifespan_context
@@ -202,3 +207,182 @@ def _parse_sse(text: str) -> list[dict]:
             with contextlib.suppress(json.JSONDecodeError):
                 events.append(json.loads(line[len("data: ") :]))
     return events
+
+
+# ---------------------------------------------------------------------------
+# RerankerClient tests (mocked httpx)
+# ---------------------------------------------------------------------------
+
+
+class TestRerankerClient:
+    @pytest.mark.asyncio
+    async def test_rerank_returns_sorted_by_score(self):
+        """rerank 返回按 score 降序排列的 (index, score) 列表。"""
+        from delphi.retrieval.rag import RerankerClient
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {"index": 0, "score": 0.3},
+            {"index": 1, "score": 0.9},
+            {"index": 2, "score": 0.6},
+        ]
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        rc = RerankerClient(base_url="http://fake:8002")
+        rc._client = mock_client
+
+        result = await rc.rerank("query", ["text0", "text1", "text2"])
+        assert result == [(1, 0.9), (2, 0.6), (0, 0.3)]
+        mock_client.post.assert_awaited_once()
+        await rc.close()
+
+    @pytest.mark.asyncio
+    async def test_rerank_with_top_k(self):
+        """rerank 传入 top_k 时截断结果。"""
+        from delphi.retrieval.rag import RerankerClient
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {"index": 0, "score": 0.3},
+            {"index": 1, "score": 0.9},
+            {"index": 2, "score": 0.6},
+        ]
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        rc = RerankerClient(base_url="http://fake:8002")
+        rc._client = mock_client
+
+        result = await rc.rerank("query", ["a", "b", "c"], top_k=2)
+        assert len(result) == 2
+        assert result[0][0] == 1  # highest score first
+        await rc.close()
+
+    @pytest.mark.asyncio
+    async def test_rerank_calls_correct_endpoint(self):
+        """rerank 调用 /rerank 端点，传入正确参数。"""
+        from delphi.retrieval.rag import RerankerClient
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"index": 0, "score": 0.5}]
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        rc = RerankerClient(base_url="http://fake:8002")
+        rc._client = mock_client
+
+        await rc.rerank("my query", ["doc1"])
+        call_args = mock_client.post.call_args
+        assert "/rerank" in call_args[0][0]
+        body = call_args[1]["json"] if "json" in call_args[1] else call_args.kwargs["json"]
+        assert body["query"] == "my query"
+        assert body["texts"] == ["doc1"]
+        assert body["truncate"] is True
+        await rc.close()
+
+
+# ---------------------------------------------------------------------------
+# retrieve() with reranker tests
+# ---------------------------------------------------------------------------
+
+
+class TestRetrieveWithReranker:
+    @pytest.mark.asyncio
+    async def test_retrieve_without_reranker(self):
+        """不传 reranker 时，直接返回 vector_store 结果。"""
+        from delphi.retrieval.rag import retrieve
+
+        fake_sparse = SparseVector(indices=[0], values=[1.0])
+        embedding_client = AsyncMock()
+        embedding_client.embed_all = AsyncMock(
+            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
+        )
+
+        points = _scored_points_from_chunks(SAMPLE_CHUNKS)
+        vector_store = AsyncMock()
+        vector_store.search = AsyncMock(return_value=points)
+
+        chunks = await retrieve(
+            question="test",
+            project="proj",
+            top_k=5,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=None,
+        )
+        assert len(chunks) == 2
+        vector_store.search.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_retrieve_with_reranker_calls_rerank(self):
+        """传入 reranker 时，先召回再 rerank。"""
+        from delphi.retrieval.rag import RerankerClient, retrieve
+
+        fake_sparse = SparseVector(indices=[0], values=[1.0])
+        embedding_client = AsyncMock()
+        embedding_client.embed_all = AsyncMock(
+            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
+        )
+
+        points = _scored_points_from_chunks(SAMPLE_CHUNKS)
+        vector_store = AsyncMock()
+        vector_store.search = AsyncMock(return_value=points)
+
+        reranker = AsyncMock(spec=RerankerClient)
+        reranker.rerank = AsyncMock(return_value=[(1, 0.95), (0, 0.80)])
+
+        chunks = await retrieve(
+            question="test",
+            project="proj",
+            top_k=5,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=reranker,
+        )
+        reranker.rerank.assert_awaited_once()
+        # reranker 返回 2 个结果
+        assert len(chunks) == 2
+        # score 应该来自 reranker
+        assert chunks[0].score == 0.95
+        assert chunks[1].score == 0.80
+
+    @pytest.mark.asyncio
+    @patch("delphi.retrieval.rag.settings")
+    async def test_retrieve_with_reranker_uses_retrieve_top_k(self, mock_settings):
+        """启用 reranker 时，初始召回使用 settings.retrieve_top_k。"""
+        from delphi.retrieval.rag import RerankerClient, retrieve
+
+        mock_settings.retrieve_top_k = 20
+        mock_settings.reranker_top_k = 5
+
+        fake_sparse = SparseVector(indices=[0], values=[1.0])
+        embedding_client = AsyncMock()
+        embedding_client.embed_all = AsyncMock(
+            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
+        )
+
+        points = _scored_points_from_chunks(SAMPLE_CHUNKS)
+        vector_store = AsyncMock()
+        vector_store.search = AsyncMock(return_value=points)
+
+        reranker = AsyncMock(spec=RerankerClient)
+        reranker.rerank = AsyncMock(return_value=[(0, 0.9)])
+
+        await retrieve(
+            question="test",
+            project="proj",
+            top_k=5,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=reranker,
+        )
+        # vector_store.search 应该用 retrieve_top_k=20 而不是 top_k=5
+        search_call = vector_store.search.call_args
+        assert search_call.kwargs.get("top_k") == 20 or search_call[1].get("top_k") == 20
