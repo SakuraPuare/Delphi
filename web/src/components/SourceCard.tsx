@@ -1,70 +1,121 @@
 import { useState } from "react";
-import type { Source } from "../types";
+import * as Collapsible from "@radix-ui/react-collapsible";
+import { motion, AnimatePresence } from "framer-motion";
+import { FileCode, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Source } from "@/types";
 
 interface Props {
-  source: Source;
+  sources: Source[];
 }
 
-export default function SourceCard({ source }: Props) {
+export default function SourceCard({ sources }: Props) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen}>
+      <Collapsible.Trigger
+        className={cn(
+          "flex w-full items-center gap-2 rounded-lg border border-dark-border px-3 py-2",
+          "text-xs font-medium text-dark-muted transition-colors",
+          "hover:bg-dark-hover",
+        )}
+      >
+        <FileCode className="h-3.5 w-3.5" />
+        <span>{sources.length} 个引用来源</span>
+        <ChevronDown
+          className={cn(
+            "ml-auto h-3.5 w-3.5 transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </Collapsible.Trigger>
+
+      <AnimatePresence>
+        {open && (
+          <Collapsible.Content forceMount asChild>
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {sources.map((src) => (
+                  <SourceItem key={src.index} source={src} />
+                ))}
+              </div>
+            </motion.div>
+          </Collapsible.Content>
+        )}
+      </AnimatePresence>
+    </Collapsible.Root>
+  );
+}
+
+function SourceItem({ source }: { source: Source }) {
   const [expanded, setExpanded] = useState(false);
+  const scorePercent = Math.round(source.score * 100);
 
   const lineRange =
     source.start_line != null && source.end_line != null
       ? `L${source.start_line}-${source.end_line}`
       : null;
 
-  const scorePercent = Math.round(source.score * 100);
-
   return (
-    <div className="bg-dark-bg rounded border border-dark-border text-xs">
+    <div
+      className={cn(
+        "rounded-lg border border-dark-border bg-dark-bg text-xs",
+        "transition-colors hover:border-dark-muted/40",
+        expanded && "col-span-2",
+      )}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-dark-border/50 transition-colors text-left"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
         aria-expanded={expanded}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-dark-muted shrink-0">[{source.index}]</span>
-          <span className="truncate text-dark-text">{source.file}</span>
+        <FileCode className="h-3.5 w-3.5 shrink-0 text-dark-muted" />
+        <span className="min-w-0 truncate text-dark-text">{source.file}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {lineRange && (
-            <span className="text-dark-muted shrink-0">{lineRange}</span>
+            <span className="rounded bg-dark-hover px-1.5 py-0.5 text-[10px] text-dark-muted">
+              {lineRange}
+            </span>
           )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0 ml-2">
           <span
-            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-              scorePercent >= 80
-                ? "bg-green-900/50 text-green-400"
-                : scorePercent >= 50
-                ? "bg-yellow-900/50 text-yellow-400"
-                : "bg-red-900/50 text-red-400"
-            }`}
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-medium",
+              scorePercent > 80
+                ? "bg-success/15 text-success"
+                : scorePercent > 50
+                  ? "bg-warning/15 text-warning"
+                  : "bg-dark-hover text-dark-muted",
+            )}
           >
             {scorePercent}%
           </span>
-          <svg
-            className={`w-3 h-3 text-dark-muted transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
         </div>
       </button>
-      {expanded && (
-        <div className="px-3 pb-3 border-t border-dark-border">
-          <pre className="mt-2 p-2 bg-[#0d1117] rounded text-[11px] text-dark-text overflow-x-auto whitespace-pre-wrap leading-relaxed">
-            {source.chunk}
-          </pre>
-        </div>
-      )}
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-dark-border px-3 pb-3">
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-dark-surface p-2 font-[JetBrains_Mono,monospace] text-[11px] leading-relaxed text-dark-text">
+                {source.chunk}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
