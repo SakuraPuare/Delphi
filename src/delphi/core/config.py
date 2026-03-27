@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llm_model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
     embedding_model: str = "BAAI/bge-m3"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    embedding_backend: str = "tei"  # "tei" | "ollama"
 
     # RAG
     chunk_top_k: int = 5

@@ -144,7 +144,7 @@ async def run_git_import(
 
             ids = [uuid.uuid4().hex for _ in batch]
             payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
-            await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse)
+            await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse or None)
 
         elapsed = time.monotonic() - t0
         logger.info("Embedded & stored %d chunks in %.1fs", len(all_chunks), elapsed)

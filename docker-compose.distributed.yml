@@ -1,0 +1,53 @@
+# 分布式部署：Mac 跑 LLM + Embedding (Ollama)，本机跑其余服务
+# 用法: docker-compose -f docker-compose.yml -f docker-compose.distributed.yml up -d
+#
+# 需要设置环境变量 MAC_IP（Mac 的局域网 IP），例如:
+#   MAC_IP=192.168.1.100 docker-compose -f docker-compose.yml -f docker-compose.distributed.yml up -d
+
+services:
+  # 禁用 vllm（Mac 上用 Ollama 替代）
+  vllm:
+    image: busybox
+    entrypoint: ["sh", "-c", "echo 'vllm disabled in distributed mode' && exit 0"]
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # 禁用 embedding（Mac 上用 Ollama 替代）
+  embedding:
+    image: busybox
+    entrypoint: ["sh", "-c", "echo 'embedding disabled in distributed mode' && exit 0"]
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # reranker 保留在 4060 GPU 上跑（~1.1GB 显存）
+  # reranker 不需要覆盖，使用默认配置
+
+  # API 服务指向 Mac 上的 Ollama
+  api:
+    environment:
+      - DELPHI_VLLM_URL=http://${MAC_IP:-host.docker.internal}:11434
+      - DELPHI_EMBEDDING_URL=http://${MAC_IP:-host.docker.internal}:11434
+      - DELPHI_EMBEDDING_BACKEND=ollama
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-qwen2.5:32b}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-bge-m3}
+      - DELPHI_QDRANT_URL=http://qdrant:6333
+      - DELPHI_RERANKER_URL=http://reranker:80
+      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - DELPHI_API_KEY=${DELPHI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy

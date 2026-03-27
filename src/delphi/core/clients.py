@@ -29,14 +29,15 @@ class EmbeddingResult:
 
 
 class EmbeddingClient:
-    """BGE-M3 embedding 服务客户端（兼容 HuggingFace TEI 接口）"""
+    """BGE-M3 embedding 服务客户端（兼容 HuggingFace TEI 和 Ollama 接口）"""
 
-    def __init__(self, base_url: str | None = None, batch_size: int = 32) -> None:
+    def __init__(self, base_url: str | None = None, batch_size: int = 32, backend: str | None = None) -> None:
         self.base_url = (base_url or settings.embedding_url).rstrip("/")
         self.batch_size = batch_size
+        self.backend = backend or settings.embedding_backend
         self._client = httpx.AsyncClient(timeout=120.0)
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def _embed_tei(self, texts: list[str]) -> list[list[float]]:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
@@ -48,8 +49,27 @@ class EmbeddingClient:
             all_embeddings.extend(resp.json())
         return all_embeddings
 
+    async def _embed_ollama(self, texts: list[str]) -> list[list[float]]:
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            resp = await self._client.post(
+                f"{self.base_url}/api/embed",
+                json={"model": settings.embedding_model, "input": batch},
+            )
+            resp.raise_for_status()
+            all_embeddings.extend(resp.json()["embeddings"])
+        return all_embeddings
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if self.backend == "ollama":
+            return await self._embed_ollama(texts)
+        return await self._embed_tei(texts)
+
     async def embed_sparse(self, texts: list[str]) -> list[SparseVector]:
-        """调用 TEI /embed_sparse 接口获取稀疏向量。"""
+        """调用 TEI /embed_sparse 接口获取稀疏向量。Ollama 不支持，返回空列表。"""
+        if self.backend == "ollama":
+            return []
         all_sparse: list[SparseVector] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
@@ -66,6 +86,9 @@ class EmbeddingClient:
 
     async def embed_all(self, texts: list[str]) -> EmbeddingResult:
         """并发调用 /embed 和 /embed_sparse，同时返回 dense 和 sparse 向量。"""
+        if self.backend == "ollama":
+            dense = await self.embed(texts)
+            return EmbeddingResult(dense=dense, sparse=[])
         dense, sparse = await asyncio.gather(
             self.embed(texts),
             self.embed_sparse(texts),

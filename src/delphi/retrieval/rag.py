@@ -105,7 +105,7 @@ async def retrieve(
     initial_top_k = settings.retrieve_top_k if reranker else top_k
     embed_result = await embedding_client.embed_all([search_query])
     query_vector = embed_result.dense[0]
-    query_sparse = embed_result.sparse[0]
+    query_sparse = embed_result.sparse[0] if embed_result.sparse else None
     results = await vector_store.search(
         collection=project, vector=query_vector, sparse_vector=query_sparse, top_k=initial_top_k
     )
