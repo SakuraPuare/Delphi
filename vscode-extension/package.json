@@ -1,0 +1,85 @@
+{
+  "name": "delphi-assistant",
+  "displayName": "Delphi Assistant",
+  "description": "Ask questions about your knowledge base directly from VS Code",
+  "version": "0.1.0",
+  "publisher": "delphi",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:delphi-chat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "delphi-sidebar",
+          "title": "Delphi",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "delphi-sidebar": [
+        {
+          "type": "webview",
+          "id": "delphi-chat",
+          "name": "Delphi Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "delphi.askQuestion",
+        "title": "Delphi: Ask Question"
+      },
+      {
+        "command": "delphi.askAboutSelection",
+        "title": "Ask Delphi"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "delphi.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Delphi Assistant",
+      "properties": {
+        "delphi.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8888",
+          "description": "Delphi API server URL"
+        },
+        "delphi.project": {
+          "type": "string",
+          "default": "",
+          "description": "Default project name for queries"
+        },
+        "delphi.topK": {
+          "type": "number",
+          "default": 5,
+          "description": "Number of top results to retrieve"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
