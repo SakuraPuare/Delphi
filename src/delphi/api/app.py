@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from delphi import __version__
-from delphi.api.routes import health, import_, projects, query
+from delphi.api.routes import health, import_, openai_compat, projects, query
 from delphi.core.clients import EmbeddingClient, VectorStore
 from delphi.core.config import settings
 from delphi.retrieval.rag import RerankerClient
@@ -45,3 +45,4 @@ app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(import_.router)
 app.include_router(query.router)
+app.include_router(openai_compat.router)
