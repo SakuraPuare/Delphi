@@ -17,11 +17,13 @@ async def health() -> HealthResponse:
     return HealthResponse(version=__version__)
 
 
-async def _check_service(url: str) -> ServiceStatus:
-    """通过 /health 端点检查外部服务健康状态。"""
+async def _check_service(url: str, path: str = "/health") -> ServiceStatus:
+    """检查外部服务健康状态，若端点返回 404 则回退到根路径。"""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{url}/health")
+            resp = await client.get(f"{url}{path}")
+            if resp.status_code == 404 and path != "/":
+                resp = await client.get(f"{url}/")
             resp.raise_for_status()
         return ServiceStatus(ok=True, error=None)
     except Exception as e:
