@@ -734,5 +734,155 @@ def graph_query(
         console.print(rel_table)
 
 
+# --- eval ---
+
+eval_app = typer.Typer(help="RAG 评估")
+app.add_typer(eval_app, name="eval")
+
+
+@eval_app.command("run")
+def eval_run(
+    dataset: str = typer.Argument(help="评估数据集 JSON 文件路径"),
+    project: str = typer.Option("", help="项目 ID（覆盖数据集中的 project_id）"),
+    output: str = typer.Option("", help="结果输出 JSON 文件路径"),
+) -> None:
+    """运行 RAG 评估流水线"""
+    import asyncio
+    import json as _json
+    from pathlib import Path
+
+    from delphi.evaluation.runner import run_evaluation
+
+    with console.status("正在运行评估..."):
+        result = asyncio.run(run_evaluation(dataset, project_id=project or None))
+
+    metrics = result["metrics"]
+    table = Table(title=f"评估结果 ({result['total']} 条, {result['elapsed_seconds']}s)")
+    table.add_column("指标", style="cyan")
+    table.add_column("值", style="green")
+    table.add_row("Recall", f"{metrics['avg_recall']:.4f}")
+    table.add_row("Precision", f"{metrics['avg_precision']:.4f}")
+    table.add_row("MRR", f"{metrics['avg_mrr']:.4f}")
+    table.add_row("Faithfulness", f"{metrics['avg_faithfulness']:.4f}")
+    table.add_row("Relevance", f"{metrics['avg_relevance']:.4f}")
+    console.print(table)
+
+    if output:
+        Path(output).write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        console.print(f"[green]✓ 结果已保存到 {output}[/green]")
+    else:
+        console.print_json(data=result)
+
+
+@eval_app.command("generate")
+def eval_generate(
+    project: str = typer.Option(..., help="项目 ID"),
+    num: int = typer.Option(50, help="生成问答对数量"),
+    output: str = typer.Option("eval_dataset.json", help="输出文件路径"),
+) -> None:
+    """从知识库自动生成评估数据集"""
+    import asyncio
+
+    from delphi.evaluation.dataset import generate_eval_dataset
+
+    with console.status(f"正在生成 {num} 条评估数据..."):
+        result = asyncio.run(generate_eval_dataset(project, num_questions=num, output_path=output))
+
+    console.print(f"[green]✓ 已生成 {len(result['items'])} 条评估数据 -> {output}[/green]")
+
+
+# --- schedule ---
+
+schedule_app = typer.Typer(help="定时同步调度")
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.command("add")
+def schedule_add(
+    project: str = typer.Option(..., "--project", "-p", help="项目 ID"),
+    repo: str = typer.Option(..., "--repo", "-r", help="Git 仓库 URL"),
+    cron: str = typer.Option("0 */6 * * *", "--cron", "-c", help="Cron 表达式"),
+    branch: str = typer.Option("main", "--branch", "-b", help="分支名称"),
+) -> None:
+    """添加定时同步任务"""
+    body = {
+        "project_id": project,
+        "repo_url": repo,
+        "cron_expr": cron,
+        "branch": branch,
+    }
+    try:
+        with _client() as c:
+            resp = c.post("/scheduler/jobs", json=body)
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code not in (200, 201):
+        _handle_http_error(resp)
+
+    data = resp.json()
+    console.print(f"[green]✓ 调度任务已创建: {data['project_id']}[/green]")
+    console.print(f"  Cron: {data['cron_expr']}")
+    console.print(f"  下次执行: {data.get('next_run_at', '-')}")
+
+
+@schedule_app.command("list")
+def schedule_list() -> None:
+    """列出所有调度任务"""
+    try:
+        with _client() as c:
+            resp = c.get("/scheduler/jobs")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    jobs = resp.json()
+    if not jobs:
+        console.print("暂无调度任务")
+        return
+
+    table = Table(title="调度任务列表")
+    table.add_column("项目", style="cyan")
+    table.add_column("仓库")
+    table.add_column("Cron")
+    table.add_column("分支")
+    table.add_column("下次执行", style="green")
+    table.add_column("上次执行")
+    table.add_column("运行中", style="yellow")
+    for j in jobs:
+        table.add_row(
+            j["project_id"],
+            j["repo_url"],
+            j["cron_expr"],
+            j["branch"],
+            j.get("next_run_at") or "-",
+            j.get("last_run_at") or "-",
+            "是" if j.get("running") else "否",
+        )
+    console.print(table)
+
+
+@schedule_app.command("remove")
+def schedule_remove(
+    project: str = typer.Option(..., "--project", "-p", help="项目 ID"),
+) -> None:
+    """移除调度任务"""
+    try:
+        with _client() as c:
+            resp = c.delete(f"/scheduler/jobs/{project}")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code == 204:
+        console.print(f"[green]✓ 已移除调度任务: {project}[/green]")
+    elif resp.status_code == 404:
+        err_console.print(f"[red]调度任务不存在: {project}[/red]")
+        raise SystemExit(1)
+    else:
+        _handle_http_error(resp)
+
+
 if __name__ == "__main__":
     app()

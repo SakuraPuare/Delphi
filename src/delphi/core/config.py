@@ -17,10 +17,12 @@ class Settings(BaseSettings):
     reranker_url: str = "http://localhost:8002"
 
     # LLM
-    llm_model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    llm_api_key: str = ""
+    llm_model: str = "Qwen/Qwen3.5-27B"
+    embedding_api_key: str = ""
     embedding_model: str = "BAAI/bge-m3"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
-    embedding_backend: str = "tei"  # "tei" | "ollama"
+    embedding_backend: str = "tei"  # "tei" | "ollama" | "openai" | "cloudflare"
 
     # RAG
     chunk_top_k: int = 5
@@ -28,6 +30,11 @@ class Settings(BaseSettings):
     reranker_enabled: bool = True
     reranker_top_k: int = 5
     retrieve_top_k: int = 15
+
+    # OpenTelemetry
+    otel_enabled: bool = False
+    otel_endpoint: str = "http://localhost:4317"
+    otel_service_name: str = "delphi"
 
 
 settings = Settings()
