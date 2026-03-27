@@ -1,0 +1,112 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:latest
+    ports:
+      - "8080:80"
+    environment:
+      - MODEL_ID=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - MAX_BATCH_TOKENS=16384
+    volumes:
+      - ~/.cache/huggingface:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
+      - TENSOR_PARALLEL_SIZE=${VLLM_TENSOR_PARALLEL_SIZE:-1}
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --model ${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  api:
+    build: .
+    ports:
+      - "8888:8888"
+    environment:
+      - DELPHI_VLLM_URL=http://vllm:8000
+      - DELPHI_QDRANT_URL=http://qdrant:6333
+      - DELPHI_EMBEDDING_URL=http://embedding:80
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - DELPHI_API_KEY=${DELPHI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3000:8080"
+    environment:
+      - OPENAI_API_BASE_URL=http://api:8888/v1
+      - OPENAI_API_KEY=${DELPHI_API_KEY:-delphi}
+      - WEBUI_AUTH=false
+    volumes:
+      - webui_data:/app/backend/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  qdrant_data:
+  webui_data:
+
+networks:
+  default:
+    name: delphi_net

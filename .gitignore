@@ -1,6 +1,6 @@
 # VitePress specific
-.vitepress/dist
-.vitepress/cache
+*/.vitepress/dist
+*/.vitepress/cache
 
 # Standard Node.js
 node_modules/
