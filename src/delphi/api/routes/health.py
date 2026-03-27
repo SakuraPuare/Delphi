@@ -1,7 +1,11 @@
-from fastapi import APIRouter
+import logging
+
+from fastapi import APIRouter, Request
 
 from delphi import __version__
 from delphi.api.models import HealthResponse, ServiceStatus, StatusResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system"])
 
@@ -12,10 +16,19 @@ async def health() -> HealthResponse:
 
 
 @router.get("/status", response_model=StatusResponse)
-async def status() -> StatusResponse:
-    # TODO: 实际检查各服务连通性
+async def status(request: Request) -> StatusResponse:
+    # Check Qdrant
+    qdrant_ok = False
+    try:
+        qdrant_ok = await request.app.state.vector_store.healthy()
+    except Exception as e:
+        logger.warning("Qdrant health check failed: %s", e)
+
+    # Embedding and vLLM checks are simple connectivity tests
+    # TODO: implement actual health checks for embedding and vllm
+
     return StatusResponse(
-        vllm=ServiceStatus(ok=False, error="not implemented"),
-        qdrant=ServiceStatus(ok=False, error="not implemented"),
-        embedding=ServiceStatus(ok=False, error="not implemented"),
+        vllm=ServiceStatus(ok=False, error="health check not implemented"),
+        qdrant=ServiceStatus(ok=qdrant_ok, error=None if qdrant_ok else "unreachable"),
+        embedding=ServiceStatus(ok=False, error="health check not implemented"),
     )

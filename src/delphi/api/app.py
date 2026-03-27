@@ -5,13 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from delphi import __version__
 from delphi.api.routes import health, import_, projects, query
+from delphi.core.clients import EmbeddingClient, VectorStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # TODO: 初始化 httpx clients, qdrant connection 等
+    app.state.embedding = EmbeddingClient()
+    app.state.vector_store = VectorStore()
     yield
-    # TODO: 清理资源
+    await app.state.embedding.close()
+    await app.state.vector_store.close()
 
 
 app = FastAPI(

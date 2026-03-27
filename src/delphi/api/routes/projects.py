@@ -1,29 +1,33 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from delphi.api.models import ProjectCreate, ProjectInfo
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-# TODO: 替换为真实的 Qdrant 集合管理
-_projects: dict[str, ProjectInfo] = {}
-
 
 @router.get("", response_model=list[ProjectInfo])
-async def list_projects() -> list[ProjectInfo]:
-    return list(_projects.values())
+async def list_projects(request: Request) -> list[ProjectInfo]:
+    vs = request.app.state.vector_store
+    try:
+        collections = await vs._client.get_collections()
+        return [ProjectInfo(name=c.name) for c in collections.collections]
+    except Exception:
+        # Qdrant not available, return empty
+        return []
 
 
 @router.post("", response_model=ProjectInfo, status_code=201)
-async def create_project(body: ProjectCreate) -> ProjectInfo:
-    if body.name in _projects:
+async def create_project(body: ProjectCreate, request: Request) -> ProjectInfo:
+    vs = request.app.state.vector_store
+    if await vs.collection_exists(body.name):
         raise HTTPException(400, detail=f"项目 '{body.name}' 已存在")
-    info = ProjectInfo(name=body.name, description=body.description)
-    _projects[body.name] = info
-    return info
+    await vs.ensure_collection(body.name)
+    return ProjectInfo(name=body.name, description=body.description)
 
 
 @router.delete("/{name}", status_code=204)
-async def delete_project(name: str) -> None:
-    if name not in _projects:
+async def delete_project(name: str, request: Request) -> None:
+    vs = request.app.state.vector_store
+    if not await vs.collection_exists(name):
         raise HTTPException(404, detail=f"项目 '{name}' 不存在")
-    del _projects[name]
+    await vs.delete_collection(name)
