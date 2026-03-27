@@ -55,6 +55,13 @@ class DocImportRequest(BaseModel):
     file_types: list[str] = ["md", "txt", "pdf", "html"]
 
 
+class MediaImportRequest(BaseModel):
+    path: str
+    project: str
+    recursive: bool = True
+    whisper_model: str = "large-v3"
+
+
 class TaskInfo(BaseModel):
     task_id: str
     status: str = "pending"

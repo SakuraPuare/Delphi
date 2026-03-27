@@ -123,7 +123,7 @@ def _poll_task(client: httpx.Client, task_id: str) -> None:
             if status == "done":
                 progress.update(bar, total=total, completed=total)
                 break
-            if status == "error":
+            if status == "failed":
                 err_console.print(f"[red]导入失败: {info.get('error', '未知错误')}[/red]")
                 raise SystemExit(1)
 
@@ -179,6 +179,32 @@ def import_docs(
     try:
         with _client() as c:
             resp = c.post("/import/docs", json=body)
+            if resp.status_code not in (200, 201, 202):
+                _handle_http_error(resp)
+            task_id = resp.json()["task_id"]
+            console.print(f"任务已创建: {task_id}")
+            _poll_task(c, task_id)
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+
+@import_app.command("media")
+def import_media(
+    path: str = typer.Argument(help="音视频目录路径"),
+    project: str = typer.Option("", help="目标项目名称"),
+    recursive: bool = typer.Option(True, "--recursive", "-r", help="递归扫描子目录"),
+    whisper_model: str = typer.Option("large-v3", "--model", help="Whisper 模型大小"),
+) -> None:
+    """导入音视频文件（转录后入库）"""
+    body = {
+        "path": path,
+        "project": project,
+        "recursive": recursive,
+        "whisper_model": whisper_model,
+    }
+    try:
+        with _client() as c:
+            resp = c.post("/import/media", json=body)
             if resp.status_code not in (200, 201, 202):
                 _handle_http_error(resp)
             task_id = resp.json()["task_id"]
