@@ -55,6 +55,19 @@ class VectorStore:
             )
             logger.info("Created collection: %s", name)
 
+    async def recreate_collection(self, name: str) -> None:
+        """Drop and recreate collection — used for idempotent re-imports."""
+        if await self.collection_exists(name):
+            await self.delete_collection(name)
+        await self._client.create_collection(
+            collection_name=name,
+            vectors_config=models.VectorParams(
+                size=self.VECTOR_SIZE,
+                distance=models.Distance.COSINE,
+            ),
+        )
+        logger.info("Recreated collection: %s", name)
+
     async def delete_collection(self, name: str) -> None:
         await self._client.delete_collection(collection_name=name)
         logger.info("Deleted collection: %s", name)
