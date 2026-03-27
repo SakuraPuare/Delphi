@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from delphi.api.models import QueryRequest, QueryResponse, Source
 from delphi.core.config import settings
@@ -54,16 +55,21 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
         history = session.get_history()
         session.add_user_message(body.question)
 
-    chunks = await retrieve(
-        question=body.question,
-        project=body.project,
-        top_k=body.top_k,
-        embedding_client=embedding_client,
-        vector_store=vector_store,
-        reranker=reranker,
-        use_graph_rag=body.use_graph_rag,
-        graph_store=graph_store,
-    )
+    try:
+        chunks = await retrieve(
+            question=body.question,
+            project=body.project,
+            top_k=body.top_k,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=reranker,
+            use_graph_rag=body.use_graph_rag,
+            graph_store=graph_store,
+        )
+    except UnexpectedResponse as exc:
+        if exc.status_code == 404:
+            raise HTTPException(404, detail=f"项目 '{body.project}' 的集合不存在，请先导入数据") from exc
+        raise
 
     session_id = session.session_id if session else None
 
@@ -104,16 +110,21 @@ async def query_stream(body: QueryRequest, request: Request):
 
     session_id = session.session_id if session else None
 
-    chunks = await retrieve(
-        question=body.question,
-        project=body.project,
-        top_k=body.top_k,
-        embedding_client=embedding_client,
-        vector_store=vector_store,
-        reranker=reranker,
-        use_graph_rag=body.use_graph_rag,
-        graph_store=graph_store,
-    )
+    try:
+        chunks = await retrieve(
+            question=body.question,
+            project=body.project,
+            top_k=body.top_k,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=reranker,
+            use_graph_rag=body.use_graph_rag,
+            graph_store=graph_store,
+        )
+    except UnexpectedResponse as exc:
+        if exc.status_code == 404:
+            raise HTTPException(404, detail=f"项目 '{body.project}' 的集合不存在，请先导入数据") from exc
+        raise
 
     if not chunks:
 
