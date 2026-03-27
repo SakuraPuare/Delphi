@@ -162,7 +162,7 @@ class TestImportGit:
 
         mock_client.post.return_value = _mock_response(202, {"task_id": "t-err"})
         mock_client.get.return_value = _mock_response(
-            200, {"status": "error", "error": "clone failed", "total": 0, "processed": 0}
+            200, {"status": "failed", "error": "clone failed", "total": 0, "processed": 0}
         )
 
         result = runner.invoke(app, ["import", "git", "https://github.com/x/y"])
