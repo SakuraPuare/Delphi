@@ -3,6 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 
 from delphi.api.models import DocImportRequest, GitImportRequest, TaskInfo
+from delphi.ingestion.doc_pipeline import run_doc_import
 from delphi.ingestion.pipeline import create_task, get_task, run_git_import
 
 router = APIRouter(prefix="/import", tags=["import"])
@@ -28,9 +29,20 @@ async def import_git(body: GitImportRequest, request: Request) -> TaskInfo:
 
 
 @router.post("/docs", response_model=TaskInfo, status_code=202)
-async def import_docs(body: DocImportRequest) -> TaskInfo:
-    # TODO: 实现文档导入
-    raise HTTPException(501, detail="文档导入尚未实现")
+async def import_docs(body: DocImportRequest, request: Request) -> TaskInfo:
+    task_id = create_task()
+    asyncio.create_task(
+        run_doc_import(
+            task_id=task_id,
+            path=body.path,
+            project=body.project,
+            recursive=body.recursive,
+            file_types=body.file_types,
+            embedding=request.app.state.embedding,
+            vector_store=request.app.state.vector_store,
+        )
+    )
+    return TaskInfo(task_id=task_id, status="pending")
 
 
 @router.get("/tasks/{task_id}", response_model=TaskInfo)

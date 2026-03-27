@@ -1,18 +1,16 @@
-"""导入任务编排"""
+"""文档目录导入流水线"""
 
 from __future__ import annotations
 
 import logging
-import shutil
-import tempfile
 import time
 import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from delphi.ingestion.chunker import chunk_file
-from delphi.ingestion.git import clone_repo, collect_files
+from delphi.ingestion.doc_chunker import chunk_doc_file
+from delphi.ingestion.pipeline import EMBED_BATCH, _tasks
 
 if TYPE_CHECKING:
     from delphi.core.clients import EmbeddingClient, VectorStore
@@ -20,70 +18,61 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# In-memory task store (MVP)
-_tasks: dict[str, dict] = {}
-
-EMBED_BATCH = 32
+SKIP_NAMES: set[str] = {".DS_Store", "Thumbs.db"}
 
 
-def create_task() -> str:
-    task_id = uuid.uuid4().hex[:12]
-    _tasks[task_id] = {
-        "task_id": task_id,
-        "status": "pending",
-        "progress": 0.0,
-        "total": 0,
-        "processed": 0,
-        "error": None,
-    }
-    return task_id
+def _collect_doc_files(root: Path, recursive: bool, file_types: list[str]) -> list[Path]:
+    """Walk directory and return matching document files."""
+    exts = {"." + ft.lstrip(".").lower() for ft in file_types}
+    pattern = "**/*" if recursive else "*"
+    result: list[Path] = []
+
+    for p in root.glob(pattern):
+        if not p.is_file():
+            continue
+        # Skip hidden files/dirs
+        if any(part.startswith(".") for part in p.relative_to(root).parts):
+            continue
+        # Skip system files
+        if p.name in SKIP_NAMES:
+            continue
+        if p.suffix.lower() in exts:
+            result.append(p)
+
+    return sorted(result)
 
 
-def get_task(task_id: str) -> dict | None:
-    return _tasks.get(task_id)
-
-
-async def run_git_import(
+async def run_doc_import(
     task_id: str,
-    url: str,
+    path: str,
     project: str,
-    branch: str = "main",
-    depth: int = 1,
-    include: list[str] | None = None,
-    exclude: list[str] | None = None,
+    recursive: bool = True,
+    file_types: list[str] | None = None,
     *,
     embedding: EmbeddingClient,
     vector_store: VectorStore,
 ) -> None:
-    """Full git import pipeline. Runs as a background task."""
+    """Full doc import pipeline. Runs as a background task."""
     task = _tasks[task_id]
     task["status"] = "running"
-    tmp_dir = None
+
+    if file_types is None:
+        file_types = ["md", "txt"]
 
     try:
-        # 1. Clone
-        is_local = not url.startswith(("http://", "https://", "git@", "ssh://"))
-        if is_local:
-            repo_path = Path(url)
-            if not repo_path.exists():
-                raise FileNotFoundError(f"路径不存在: {url}")
-        else:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="delphi-"))
-            repo_path = tmp_dir / "repo"
-            await clone_repo(url, repo_path, branch=branch, depth=depth)
+        root = Path(path)
+        if not root.exists():
+            raise FileNotFoundError(f"路径不存在: {path}")
 
-        # 2. Collect files
-        files = collect_files(repo_path, include=include, exclude=exclude)
+        files = _collect_doc_files(root, recursive, file_types)
         task["total"] = len(files)
-        logger.info("Collected %d files from %s", len(files), url)
+        logger.info("Collected %d doc files from %s", len(files), path)
 
-        # 3. Parse & chunk
         all_chunks: list[Chunk] = []
         for i, fpath in enumerate(files):
             try:
-                rel_path = fpath.relative_to(repo_path)
-                chunks = chunk_file(fpath, repo_url=url)
-                # Normalize file_path to relative
+                rel_path = fpath.relative_to(root)
+                chunks = chunk_doc_file(fpath)
                 for c in chunks:
                     c.metadata.file_path = str(rel_path)
                 all_chunks.extend(chunks)
@@ -98,10 +87,9 @@ async def run_git_import(
             task["status"] = "done"
             return
 
-        # 4. Recreate collection (idempotent re-import)
+        # Recreate collection (idempotent re-import)
         await vector_store.recreate_collection(project)
 
-        # 5. Embed & upsert in batches
         t0 = time.monotonic()
         for i in range(0, len(all_chunks), EMBED_BATCH):
             batch = all_chunks[i : i + EMBED_BATCH]
@@ -118,10 +106,6 @@ async def run_git_import(
         task["status"] = "done"
 
     except Exception as e:
-        logger.error("Import failed: %s", e, exc_info=True)
+        logger.error("Doc import failed: %s", e, exc_info=True)
         task["status"] = "failed"
         task["error"] = str(e)
-
-    finally:
-        if tmp_dir and tmp_dir.exists():
-            shutil.rmtree(tmp_dir, ignore_errors=True)
