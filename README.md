@@ -144,23 +144,23 @@ Delphi 本身不负责训练，但提供完整的微调工作流支持：
 ## 实施路线
 
 ### Phase 1：MVP
-- [ ] Docker Compose 编排（vLLM + Qdrant + BGE-M3）
-- [ ] 数据导入：Git 仓库 + 文档目录
-- [ ] Tree-sitter 代码切分 + 文档切分
-- [ ] 基础 RAG Pipeline
-- [ ] Open WebUI 接入
+- [x] Docker Compose 编排（vLLM + Qdrant + BGE-M3）
+- [x] 数据导入：Git 仓库 + 文档目录
+- [x] Tree-sitter 代码切分 + 文档切分
+- [x] 基础 RAG Pipeline
+- [x] Open WebUI 接入
 
 ### Phase 2：数据增强
-- [ ] 音视频转录导入
-- [ ] Chunk 元数据丰富化
-- [ ] Reranker 精排
-- [ ] 增量更新
+- [x] 音视频转录导入
+- [x] Chunk 元数据丰富化
+- [x] Reranker 精排
+- [x] 增量更新
 
 ### Phase 3：体验优化
-- [ ] Query 改写与意图路由
-- [ ] 引用溯源（来源文件 + 行号）
-- [ ] 多轮对话
-- [ ] 自建前端
+- [x] Query 改写与意图路由
+- [x] 引用溯源（来源文件 + 行号）
+- [x] 多轮对话
+- [x] 自建前端
 
 ### Phase 4：进阶
 - [ ] 微调数据自动生成
