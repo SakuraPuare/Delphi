@@ -254,6 +254,82 @@ def query(
         _handle_connection_error()
 
 
+# --- agent ---
+
+
+@app.command()
+def agent(
+    question: str = typer.Argument(help="查询问题"),
+    project: str = typer.Option("", help="指定查询的项目"),
+    max_steps: int = typer.Option(5, help="最大推理步数"),
+    stream: bool = typer.Option(False, "--stream/--no-stream", help="流式输出"),
+    show_steps: bool = typer.Option(False, "--show-steps", help="显示推理步骤"),
+    show_sources: bool = typer.Option(False, "--show-sources", help="显示引用来源"),
+) -> None:
+    """Agent 模式查询：多步推理回答复杂问题"""
+    import json as _json
+
+    body = {"question": question, "project": project, "max_steps": max_steps}
+    try:
+        with _client() as c:
+            if stream:
+                with c.stream("POST", "/agent/query/stream", json=body, timeout=120) as resp:
+                    if resp.status_code != 200:
+                        resp.read()
+                        _handle_http_error(resp)
+                    for line in resp.iter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data = _json.loads(line[6:])
+                        evt_type = data.get("type", "")
+                        if evt_type == "thought" and show_steps:
+                            console.print(f"[dim]💭 {data['content']}[/dim]")
+                        elif evt_type == "action" and show_steps:
+                            console.print(f"[dim]🔧 {data.get('args', '')}[/dim]")
+                        elif evt_type == "observation" and show_steps:
+                            obs = data.get("content", "")
+                            if len(obs) > 200:
+                                obs = obs[:200] + "..."
+                            console.print(f"[dim]📋 {obs}[/dim]")
+                        elif evt_type == "token":
+                            console.print(data.get("content", ""), end="")
+                        elif evt_type == "sources" and show_sources:
+                            console.print("\n\n[bold]来源:[/bold]")
+                            for src in data.get("sources", []):
+                                console.print(f"  [{src.get('index', '')}] {src.get('file', '')}")
+                        elif evt_type == "done":
+                            pass
+                console.print()
+            else:
+                resp = c.post("/agent/query", json=body, timeout=120)
+                if resp.status_code != 200:
+                    _handle_http_error(resp)
+                data = resp.json()
+
+                if show_steps and data.get("steps"):
+                    console.print("[bold]推理过程:[/bold]")
+                    for i, step in enumerate(data["steps"], 1):
+                        console.print(f"\n[dim]--- 步骤 {i} ---[/dim]")
+                        console.print(f"[dim]💭 {step['thought']}[/dim]")
+                        if step.get("action"):
+                            console.print(f"[dim]🔧 {step['action']}[/dim]")
+                        if step.get("observation"):
+                            obs = step["observation"]
+                            if len(obs) > 200:
+                                obs = obs[:200] + "..."
+                            console.print(f"[dim]📋 {obs}[/dim]")
+                    console.print()
+
+                console.print(data["answer"])
+
+                if show_sources and data.get("sources"):
+                    console.print("\n[bold]来源:[/bold]")
+                    for src in data["sources"]:
+                        console.print(f"  [{src.get('index', '')}] {src.get('file', '')}")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+
 # --- projects ---
 
 projects_app = typer.Typer(help="项目管理")
@@ -325,6 +401,337 @@ def projects_delete(
         _handle_http_error(resp)
 
     console.print(f"[green]✓ 项目 '{name}' 已删除[/green]")
+
+
+# --- finetune ---
+
+finetune_app = typer.Typer(help="微调数据生成")
+app.add_typer(finetune_app, name="finetune")
+
+
+def _poll_finetune_task(client: httpx.Client, task_id: str) -> None:
+    """Poll a finetune task until completion."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        bar = progress.add_task("生成中...", total=None)
+        while True:
+            resp = client.get(f"/finetune/tasks/{task_id}")
+            if resp.status_code != 200:
+                _handle_http_error(resp)
+            info = resp.json()
+            status = info.get("status", "pending")
+            processed = info.get("processed", 0)
+            total = info.get("total", 0)
+
+            if total > 0:
+                progress.update(bar, total=total, completed=processed)
+
+            if status == "done":
+                progress.update(bar, total=total, completed=total)
+                break
+            if status == "failed":
+                err_console.print(f"[red]生成失败: {info.get('error', '未知错误')}[/red]")
+                raise SystemExit(1)
+
+            time.sleep(2)
+
+    console.print(f"[green]✓ 生成完成: {info.get('processed', 0)} 条 Q&A 对[/green]")
+
+
+@finetune_app.command("generate")
+def finetune_generate(
+    project: str = typer.Option(..., "--project", "-p", help="项目名称"),
+    samples: int = typer.Option(100, "--samples", "-n", help="采样 chunk 数量"),
+    questions_per_chunk: int = typer.Option(2, "--qpc", help="每个 chunk 生成的问题数"),
+    fmt: str = typer.Option("jsonl", "--format", "-f", help="输出格式: jsonl | alpaca | sharegpt"),
+    output: str = typer.Option("", "--output", "-o", help="输出文件路径"),
+) -> None:
+    """从知识库生成微调训练数据"""
+    body = {
+        "project": project,
+        "num_samples": samples,
+        "questions_per_chunk": questions_per_chunk,
+        "format": fmt,
+        "output_path": output,
+    }
+    try:
+        with _client() as c:
+            resp = c.post("/finetune/generate", json=body)
+            if resp.status_code not in (200, 201, 202):
+                _handle_http_error(resp)
+            task_id = resp.json()["task_id"]
+            console.print(f"任务已创建: {task_id}")
+            _poll_finetune_task(c, task_id)
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+
+# --- models ---
+
+
+models_app = typer.Typer(help="模型管理")
+app.add_typer(models_app, name="models")
+
+
+@models_app.command("list")
+def models_list() -> None:
+    """列出所有已注册模型"""
+    try:
+        with _client() as c:
+            resp = c.get("/models")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    models = resp.json()
+    if not models:
+        console.print("暂无已注册模型")
+        return
+
+    table = Table(title="模型列表")
+    table.add_column("名称", style="cyan")
+    table.add_column("路径")
+    table.add_column("类型")
+    table.add_column("基础模型")
+    table.add_column("活跃", justify="center")
+    for m in models:
+        active = "✓" if m.get("active") else ""
+        table.add_row(
+            m["name"],
+            m.get("model_path", ""),
+            m.get("model_type", "base"),
+            m.get("base_model", ""),
+            active,
+        )
+    console.print(table)
+
+
+@models_app.command("register")
+def models_register(
+    name: str = typer.Argument(help="模型名称"),
+    path: str = typer.Option(..., "--path", "-p", help="模型路径或 HuggingFace ID"),
+    model_type: str = typer.Option("base", "--type", "-t", help="模型类型: base | lora"),
+    base_model: str = typer.Option("", "--base", "-b", help="LoRA 基础模型（仅 lora 类型需要）"),
+    description: str = typer.Option("", "--desc", "-d", help="模型描述"),
+) -> None:
+    """注册新模型"""
+    body = {
+        "name": name,
+        "model_path": path,
+        "model_type": model_type,
+        "base_model": base_model,
+        "description": description,
+    }
+    try:
+        with _client() as c:
+            resp = c.post("/models/register", json=body)
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code not in (200, 201):
+        _handle_http_error(resp)
+
+    console.print(f"[green]✓ 模型 '{name}' 已注册[/green]")
+
+
+@models_app.command("activate")
+def models_activate(
+    name: str = typer.Argument(help="模型名称"),
+) -> None:
+    """激活/切换模型"""
+    try:
+        with _client() as c:
+            resp = c.post("/models/activate", json={"name": name})
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    console.print(f"[green]✓ 已切换到模型 '{name}'[/green]")
+
+
+@models_app.command("remove")
+def models_remove(
+    name: str = typer.Argument(help="模型名称"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认"),
+) -> None:
+    """注销模型"""
+    if not yes:
+        confirm = typer.confirm(f"确认注销模型 '{name}'？")
+        if not confirm:
+            raise typer.Abort()
+
+    try:
+        with _client() as c:
+            resp = c.delete(f"/models/{name}")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code not in (200, 204):
+        _handle_http_error(resp)
+
+    console.print(f"[green]✓ 模型 '{name}' 已注销[/green]")
+
+
+# --- graph ---
+
+graph_app = typer.Typer(help="代码关系图谱")
+app.add_typer(graph_app, name="graph")
+
+
+@graph_app.command("build")
+def graph_build(
+    project: str = typer.Option(..., "--project", "-p", help="项目名称"),
+    path: str = typer.Option(..., "--path", help="代码目录路径"),
+    include: list[str] | None = typer.Option(None, "--include", help="文件过滤 glob"),  # noqa: B008
+    exclude: list[str] | None = typer.Option(None, "--exclude", help="排除文件 glob"),  # noqa: B008
+) -> None:
+    """构建代码关系图谱"""
+    body = {
+        "project": project,
+        "path": path,
+        "include": include or [],
+        "exclude": exclude or [],
+    }
+    try:
+        with _client() as c:
+            resp = c.post("/graph/build", json=body)
+            if resp.status_code not in (200, 201, 202):
+                _handle_http_error(resp)
+            task_id = resp.json()["task_id"]
+            console.print(f"任务已创建: {task_id}")
+            _poll_graph_task(c, task_id)
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+
+def _poll_graph_task(client: httpx.Client, task_id: str) -> None:
+    """Poll a graph build task until completion."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        bar = progress.add_task("构建图谱中...", total=None)
+        while True:
+            resp = client.get(f"/import/tasks/{task_id}")
+            if resp.status_code != 200:
+                _handle_http_error(resp)
+            info = resp.json()
+            total = info.get("total", 0)
+            processed = info.get("processed", 0)
+            status = info.get("status", "pending")
+
+            if total > 0:
+                progress.update(bar, total=total, completed=processed)
+
+            if status == "done":
+                progress.update(bar, total=total, completed=total)
+                break
+            if status == "failed":
+                err_console.print(f"[red]图谱构建失败: {info.get('error', '未知错误')}[/red]")
+                raise SystemExit(1)
+
+            time.sleep(2)
+
+    console.print(f"[green]✓ 图谱构建完成: {info.get('processed', 0)} 个符号已提取[/green]")
+
+
+@graph_app.command("show")
+def graph_show(
+    project: str = typer.Argument(help="项目名称"),
+) -> None:
+    """显示图谱统计"""
+    try:
+        with _client() as c:
+            resp = c.get(f"/graph/{project}")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    data = resp.json()
+    symbols = data.get("symbols", [])
+    relations = data.get("relations", [])
+
+    console.print(f"\n[bold]图谱: {project}[/bold]")
+    console.print(f"  符号数: {len(symbols)}")
+    console.print(f"  关系数: {len(relations)}")
+
+    # 按类型统计
+    kind_counts: dict[str, int] = {}
+    for s in symbols:
+        k = s.get("kind", "unknown")
+        kind_counts[k] = kind_counts.get(k, 0) + 1
+    if kind_counts:
+        console.print("\n  符号类型:")
+        for k, v in sorted(kind_counts.items()):
+            console.print(f"    {k}: {v}")
+
+    rel_counts: dict[str, int] = {}
+    for r in relations:
+        k = r.get("kind", "unknown")
+        rel_counts[k] = rel_counts.get(k, 0) + 1
+    if rel_counts:
+        console.print("\n  关系类型:")
+        for k, v in sorted(rel_counts.items()):
+            console.print(f"    {k}: {v}")
+    console.print()
+
+
+@graph_app.command("query")
+def graph_query(
+    project: str = typer.Argument(help="项目名称"),
+    symbol: str = typer.Option(..., "--symbol", "-s", help="符号名称"),
+) -> None:
+    """查询符号关系"""
+    try:
+        with _client() as c:
+            resp = c.get(f"/graph/{project}/symbol/{symbol}")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    data = resp.json()
+    symbols = data.get("symbols", [])
+    relations = data.get("relations", [])
+
+    if symbols:
+        table = Table(title=f"符号: {symbol}")
+        table.add_column("名称", style="cyan")
+        table.add_column("类型")
+        table.add_column("文件")
+        table.add_column("行号")
+        for s in symbols:
+            table.add_row(
+                s["qualified_name"],
+                s["kind"],
+                s["file_path"],
+                f"{s['start_line']}-{s['end_line']}",
+            )
+        console.print(table)
+
+    if relations:
+        rel_table = Table(title="关系")
+        rel_table.add_column("来源", style="cyan")
+        rel_table.add_column("类型", style="yellow")
+        rel_table.add_column("目标", style="green")
+        for r in relations:
+            rel_table.add_row(r["source"], r["kind"], r["target"])
+        console.print(rel_table)
 
 
 if __name__ == "__main__":

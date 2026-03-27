@@ -96,9 +96,99 @@ class QueryResponse(BaseModel):
     session_id: str | None = None  # 返回 session_id 供后续使用
 
 
+# --- Agent ---
+
+
+class AgentQueryRequest(BaseModel):
+    question: str
+    project: str = ""
+    max_steps: int = 5
+    session_id: str | None = None
+
+
+class AgentStepModel(BaseModel):
+    thought: str
+    action: str | None = None
+    observation: str | None = None
+    answer: str | None = None
+
+
+class AgentQueryResponse(BaseModel):
+    answer: str
+    steps: list[AgentStepModel] = []
+    sources: list[Source] = []
+    session_id: str | None = None
+
+
+# --- Finetune ---
+
+
+class FinetuneGenRequest(BaseModel):
+    project: str
+    num_samples: int = 100
+    questions_per_chunk: int = 2
+    format: str = "jsonl"  # jsonl | alpaca | sharegpt
+    output_path: str = ""  # 空则返回内容
+
+
+# --- Models ---
+
+
+class ModelRegisterRequest(BaseModel):
+    name: str
+    model_path: str
+    model_type: str = "base"  # base | lora
+    base_model: str = ""
+    description: str = ""
+
+
+class ModelInfoResponse(BaseModel):
+    name: str
+    model_path: str
+    model_type: str = "base"
+    base_model: str = ""
+    description: str = ""
+    active: bool = False
+
+
+class ModelActivateRequest(BaseModel):
+    name: str
+
+
 # --- Error ---
 
 
 class ErrorResponse(BaseModel):
     code: str
     message: str
+
+
+# --- Graph ---
+
+
+class GraphBuildRequest(BaseModel):
+    project: str
+    path: str  # 代码目录路径
+    include: list[str] = []
+    exclude: list[str] = []
+
+
+class SymbolInfo(BaseModel):
+    name: str
+    qualified_name: str
+    kind: str
+    file_path: str
+    start_line: int
+    end_line: int
+    language: str
+
+
+class RelationInfo(BaseModel):
+    source: str
+    target: str
+    kind: str
+
+
+class GraphQueryResponse(BaseModel):
+    symbols: list[SymbolInfo] = []
+    relations: list[RelationInfo] = []

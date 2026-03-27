@@ -70,18 +70,29 @@ def _build_plain_messages(messages: list[ChatMessage]) -> list[dict[str, str]]:
 
 
 @router.get("/models")
-async def list_models() -> dict[str, Any]:
-    return {
-        "object": "list",
-        "data": [
+async def list_models(request: Request) -> dict[str, Any]:
+    mgr = request.app.state.model_manager
+    registered = mgr.list_models()
+
+    data = [
+        {
+            "id": "delphi",
+            "object": "model",
+            "created": _ts(),
+            "owned_by": "delphi",
+        }
+    ]
+    for m in registered:
+        data.append(
             {
-                "id": "delphi",
+                "id": m.name,
                 "object": "model",
                 "created": _ts(),
                 "owned_by": "delphi",
             }
-        ],
-    }
+        )
+
+    return {"object": "list", "data": data}
 
 
 # ---------------------------------------------------------------------------
