@@ -6,15 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from delphi import __version__
 from delphi.api.routes import health, import_, projects, query
 from delphi.core.clients import EmbeddingClient, VectorStore
+from delphi.core.config import settings
+from delphi.retrieval.rag import RerankerClient
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.embedding = EmbeddingClient()
     app.state.vector_store = VectorStore()
+    if settings.reranker_enabled:
+        app.state.reranker = RerankerClient()
+    else:
+        app.state.reranker = None
     yield
     await app.state.embedding.close()
     await app.state.vector_store.close()
+    if app.state.reranker:
+        await app.state.reranker.close()
 
 
 app = FastAPI(

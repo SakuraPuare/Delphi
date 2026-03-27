@@ -24,6 +24,7 @@ def client():
     async def _test_lifespan(a):
         a.state.vector_store = mock_vs
         a.state.embedding = mock_embedding
+        a.state.reranker = None
         yield
 
     original = app.router.lifespan_context

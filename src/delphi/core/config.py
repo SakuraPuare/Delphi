@@ -14,13 +14,18 @@ class Settings(BaseSettings):
     vllm_url: str = "http://localhost:8000"
     qdrant_url: str = "http://localhost:6333"
     embedding_url: str = "http://localhost:8001"
+    reranker_url: str = "http://localhost:8002"
 
     # LLM
     llm_model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
     embedding_model: str = "BAAI/bge-m3"
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
 
     # RAG
     chunk_top_k: int = 5
+    reranker_enabled: bool = True
+    reranker_top_k: int = 5
+    retrieve_top_k: int = 15
 
 
 settings = Settings()

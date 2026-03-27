@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from qdrant_client import AsyncQdrantClient
 
-from delphi.core.clients import VectorStore
+from delphi.core.clients import EmbeddingResult, SparseVector, VectorStore
 from delphi.ingestion.chunker import chunk_file
 from delphi.ingestion.doc_chunker import chunk_doc_file
 from delphi.ingestion.doc_pipeline import run_doc_import
@@ -32,6 +32,20 @@ class FakeEmbedding:
             rng = random.Random(hash(t))
             result.append([rng.gauss(0, 1) for _ in range(VECTOR_DIM)])
         return result
+
+    async def embed_sparse(self, texts: list[str]) -> list[SparseVector]:
+        result = []
+        for t in texts:
+            rng = random.Random(hash(t) ^ 0xDEAD)
+            indices = sorted(rng.sample(range(30522), 10))
+            values = [rng.random() for _ in range(10)]
+            result.append(SparseVector(indices=indices, values=values))
+        return result
+
+    async def embed_all(self, texts: list[str]) -> EmbeddingResult:
+        dense = await self.embed(texts)
+        sparse = await self.embed_sparse(texts)
+        return EmbeddingResult(dense=dense, sparse=sparse)
 
     async def close(self) -> None:
         pass
