@@ -18,6 +18,8 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store";
 import { fetchProjects, fetchStatus } from "@/api";
+import { useTaskProgress } from "@/hooks/useTaskProgress";
+import TaskProgressPanel from "@/components/TaskProgressPanel";
 
 const VERSION = "0.1.0";
 
@@ -41,6 +43,7 @@ export default function Sidebar() {
   } = useStore();
 
   const statusInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { tasks: wsTasks, connected: wsConnected } = useTaskProgress();
 
   // Fetch projects on mount
   useEffect(() => {
@@ -314,6 +317,11 @@ export default function Sidebar() {
                     />
                   </div>
                 </button>
+              </div>
+
+              {/* ---- Task progress ---- */}
+              <div className="px-3 py-2">
+                <TaskProgressPanel tasks={wsTasks} connected={wsConnected} />
               </div>
 
               {/* ---- 6. System status ---- */}

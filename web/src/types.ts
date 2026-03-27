@@ -61,3 +61,20 @@ export type SSEEvent =
   | { type: "thought"; content: string }
   | { type: "action"; tool: string; args: string }
   | { type: "observation"; content: string };
+
+// Task progress (WebSocket)
+export type TaskStatus = "pending" | "running" | "done" | "failed";
+
+export interface TaskProgress {
+  event: "snapshot" | "created" | "progress" | "completed" | "failed";
+  task_id: string;
+  task_type: string;
+  status: TaskStatus;
+  progress: number;
+  message: string;
+  metadata: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  created_at: number;
+  updated_at: number;
+}
