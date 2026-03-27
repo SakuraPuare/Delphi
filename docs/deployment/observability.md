@@ -158,7 +158,7 @@ Jaeger 暴露的端口：
 | `4317` | gRPC | OTLP gRPC 接收 |
 | `4318` | HTTP | OTLP HTTP 接收 |
 
-启动后访问 [http://localhost:16686](http://localhost:16686) 打开 Jaeger UI，在 Service 下拉框中选择 `delphi` 即可查看链路。
+启动后访问 `http://localhost:16686` 打开 Jaeger UI，在 Service 下拉框中选择 `delphi` 即可查看链路。
 
 ### 查看 Trace 示例
 
