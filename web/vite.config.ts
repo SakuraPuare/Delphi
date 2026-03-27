@@ -10,6 +10,30 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom"],
+          markdown: [
+            "react-markdown",
+            "remark-gfm",
+            "rehype-highlight",
+            "highlight.js",
+          ],
+          ui: [
+            "framer-motion",
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-scroll-area",
+            "@radix-ui/react-tooltip",
+            "@radix-ui/react-collapsible",
+            "@radix-ui/react-separator",
+          ],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       "/api": {
