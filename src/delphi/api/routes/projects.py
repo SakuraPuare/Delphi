@@ -10,7 +10,11 @@ async def list_projects(request: Request) -> list[ProjectInfo]:
     vs = request.app.state.vector_store
     try:
         collections = await vs._client.get_collections()
-        return [ProjectInfo(name=c.name) for c in collections.collections]
+        result = []
+        for c in collections.collections:
+            count = await vs.count(c.name)
+            result.append(ProjectInfo(name=c.name, chunk_count=count))
+        return result
     except Exception:
         # Qdrant not available, return empty
         return []

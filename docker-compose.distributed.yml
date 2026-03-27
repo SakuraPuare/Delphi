@@ -8,7 +8,7 @@ services:
   # 禁用 vllm（Mac 上用 Ollama 替代）
   vllm:
     image: busybox
-    entrypoint: ["sh", "-c", "echo 'vllm disabled in distributed mode' && exit 0"]
+    entrypoint: ["sh", "-c", "echo 'vllm disabled in distributed mode' && sleep infinity"]
     deploy:
       resources:
         reservations:
@@ -21,7 +21,7 @@ services:
   # 禁用 embedding（Mac 上用 Ollama 替代）
   embedding:
     image: busybox
-    entrypoint: ["sh", "-c", "echo 'embedding disabled in distributed mode' && exit 0"]
+    entrypoint: ["sh", "-c", "echo 'embedding disabled in distributed mode' && sleep infinity"]
     deploy:
       resources:
         reservations:
@@ -40,7 +40,7 @@ services:
       - DELPHI_VLLM_URL=http://${MAC_IP:-host.docker.internal}:11434
       - DELPHI_EMBEDDING_URL=http://${MAC_IP:-host.docker.internal}:11434
       - DELPHI_EMBEDDING_BACKEND=ollama
-      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-qwen2.5:32b}
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-qwen3.5:27b}
       - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-bge-m3}
       - DELPHI_QDRANT_URL=http://qdrant:6333
       - DELPHI_RERANKER_URL=http://reranker:80

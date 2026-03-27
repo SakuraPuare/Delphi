@@ -9,7 +9,7 @@ services:
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -64,7 +64,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODEL_NAME=${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - MODEL_NAME=${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
       - MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
       - TENSOR_PARALLEL_SIZE=${VLLM_TENSOR_PARALLEL_SIZE:-1}
     volumes:
@@ -77,7 +77,7 @@ services:
               count: 1
               capabilities: [gpu]
     command: >
-      --model ${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --model ${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
       --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
       --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
     healthcheck:
@@ -91,15 +91,20 @@ services:
     build: .
     ports:
       - "8888:8888"
+    volumes:
+      - /home/kent:/mnt/host:ro
     environment:
       - DELPHI_VLLM_URL=http://vllm:8000
       - DELPHI_QDRANT_URL=http://qdrant:6333
       - DELPHI_EMBEDDING_URL=http://embedding:80
-      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
       - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
       - DELPHI_RERANKER_URL=http://reranker:80
       - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
       - DELPHI_API_KEY=${DELPHI_API_KEY:-}
+      - DELPHI_OTEL_ENABLED=${DELPHI_OTEL_ENABLED:-false}
+      - DELPHI_OTEL_ENDPOINT=${DELPHI_OTEL_ENDPOINT:-http://jaeger:4317}
+      - DELPHI_OTEL_SERVICE_NAME=${DELPHI_OTEL_SERVICE_NAME:-delphi}
     depends_on:
       qdrant:
         condition: service_healthy
@@ -110,7 +115,7 @@ services:
       vllm:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\""]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -136,6 +141,18 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  # --- 可选：OpenTelemetry 追踪后端 ---
+  # 启动方式：docker compose --profile otel up -d
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: ["otel"]
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
 
 volumes:
   qdrant_data:

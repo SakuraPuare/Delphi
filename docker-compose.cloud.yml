@@ -1,0 +1,50 @@
+# 云端 LLM + 远程 Embedding 部署：DeepSeek API 做 LLM，Mac Ollama 做 Embedding，本机跑其余服务
+# 用法: docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d
+
+services:
+  # 禁用 vllm（使用 DeepSeek 云端 API）
+  vllm:
+    image: busybox
+    entrypoint: ["sh", "-c", "echo 'vllm disabled – using DeepSeek API' && sleep infinity"]
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # 禁用本地 embedding（使用 Mac Ollama）
+  embedding:
+    image: busybox
+    entrypoint: ["sh", "-c", "echo 'embedding disabled – using remote Ollama' && sleep infinity"]
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # reranker 保留在本机 GPU 上跑
+
+  # API 服务：LLM 指向 DeepSeek，Embedding 指向 Mac Ollama
+  api:
+    environment:
+      - DELPHI_VLLM_URL=${DELPHI_VLLM_URL:-https://api.deepseek.com}
+      - DELPHI_LLM_API_KEY=${DELPHI_LLM_API_KEY}
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-deepseek-chat}
+      - DELPHI_EMBEDDING_URL=http://${MAC_IP:-192.168.100.45}:11434
+      - DELPHI_EMBEDDING_BACKEND=ollama
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-bge-m3}
+      - DELPHI_QDRANT_URL=http://qdrant:6333
+      - DELPHI_RERANKER_URL=http://reranker:80
+      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - DELPHI_API_KEY=${DELPHI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy
