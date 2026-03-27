@@ -25,3 +25,4 @@ htmlcov/
 
 # Environment
 .env
+finetune_*.jsonl
