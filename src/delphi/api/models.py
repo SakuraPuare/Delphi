@@ -71,9 +71,11 @@ class QueryRequest(BaseModel):
     question: str
     project: str = ""
     top_k: int = 5
+    session_id: str | None = None  # 传入 session_id 启用多轮对话
 
 
 class Source(BaseModel):
+    index: int = 0
     file: str
     chunk: str = ""
     score: float = 0.0
@@ -84,6 +86,7 @@ class Source(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[Source] = []
+    session_id: str | None = None  # 返回 session_id 供后续使用
 
 
 # --- Error ---

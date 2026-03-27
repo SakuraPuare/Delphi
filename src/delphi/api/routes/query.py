@@ -20,13 +20,14 @@ NO_RESULTS_MSG = "未找到相关内容，请尝试换一种提问方式。"
 def _chunks_to_sources(chunks):
     return [
         Source(
+            index=i + 1,
             file=c.file_path,
             chunk=c.content,
             score=c.score,
             start_line=c.start_line,
             end_line=c.end_line,
         )
-        for c in chunks
+        for i, c in enumerate(chunks)
     ]
 
 
@@ -38,6 +39,19 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
+    sessions = request.app.state.sessions
+
+    # Session 管理
+    session = None
+    history = None
+    if body.session_id:
+        session = sessions.get(body.session_id)
+    if session is None and body.session_id is None:
+        session = sessions.create(body.project)
+
+    if session:
+        history = session.get_history()
+        session.add_user_message(body.question)
 
     chunks = await retrieve(
         question=body.question,
@@ -48,12 +62,20 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
         reranker=reranker,
     )
 
-    if not chunks:
-        return QueryResponse(answer=NO_RESULTS_MSG, sources=[])
+    session_id = session.session_id if session else None
 
-    messages = build_prompt(body.question, chunks)
+    if not chunks:
+        return QueryResponse(answer=NO_RESULTS_MSG, sources=[], session_id=session_id)
+
+    messages = build_prompt(body.question, chunks, history=history)
     answer = await generate_sync(messages, settings.vllm_url, settings.llm_model)
-    return QueryResponse(answer=answer, sources=_chunks_to_sources(chunks))
+
+    if session:
+        session.add_assistant_message(answer)
+
+    return QueryResponse(
+        answer=answer, sources=_chunks_to_sources(chunks), session_id=session_id
+    )
 
 
 @router.post("/query/stream")
@@ -64,6 +86,21 @@ async def query_stream(body: QueryRequest, request: Request):
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
+    sessions = request.app.state.sessions
+
+    # Session 管理
+    session = None
+    history = None
+    if body.session_id:
+        session = sessions.get(body.session_id)
+    if session is None and body.session_id is None:
+        session = sessions.create(body.project)
+
+    if session:
+        history = session.get_history()
+        session.add_user_message(body.question)
+
+    session_id = session.session_id if session else None
 
     chunks = await retrieve(
         question=body.question,
@@ -78,17 +115,22 @@ async def query_stream(body: QueryRequest, request: Request):
 
         async def empty_stream():
             yield f"data: {json.dumps({'type': 'error', 'message': NO_RESULTS_MSG}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
         return StreamingResponse(empty_stream(), media_type="text/event-stream")
 
-    messages = build_prompt(body.question, chunks)
+    messages = build_prompt(body.question, chunks, history=history)
     sources = [s.model_dump() for s in _chunks_to_sources(chunks)]
 
     async def event_stream():
+        collected: list[str] = []
         async for token in generate(messages, settings.vllm_url, settings.llm_model):
+            collected.append(token)
             yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+        # 记录完整回复到 session
+        if session:
+            session.add_assistant_message("".join(collected))
         yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

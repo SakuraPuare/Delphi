@@ -8,12 +8,14 @@ from delphi.api.routes import health, import_, projects, query
 from delphi.core.clients import EmbeddingClient, VectorStore
 from delphi.core.config import settings
 from delphi.retrieval.rag import RerankerClient
+from delphi.retrieval.session import SessionStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.embedding = EmbeddingClient()
     app.state.vector_store = VectorStore()
+    app.state.sessions = SessionStore()
     if settings.reranker_enabled:
         app.state.reranker = RerankerClient()
     else:
