@@ -1,78 +1,75 @@
-@import "highlight.js/styles/github-dark.css";
+@import "tailwindcss";
+@import "highlight.js/styles/github-dark.min.css";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
+@theme {
+  --color-dark-bg: #0a0a0f;
+  --color-dark-surface: #12121a;
+  --color-dark-card: #1a1a28;
+  --color-dark-hover: #22223a;
+  --color-dark-border: #2a2a3e;
+  --color-dark-text: #e4e4ef;
+  --color-dark-muted: #8888a0;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-muted: #6366f120;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
 }
 
-/* Scrollbar */
+/* 全局样式 */
+body {
+  @apply bg-dark-bg text-dark-text antialiased;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a4a;
+  background: var(--color-dark-border);
   border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-muted);
+}
 
-/* Markdown prose inside messages */
+/* Markdown 排版 */
 .prose pre {
-  background: #0d1117;
-  border-radius: 8px;
-  padding: 1rem;
-  overflow-x: auto;
+  @apply rounded-lg bg-dark-bg border border-dark-border p-4 overflow-x-auto my-3;
 }
 .prose code:not(pre code) {
-  background: #2a2a4a;
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-.prose a {
-  color: #7c8cf8;
-}
-.prose table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.prose th,
-.prose td {
-  border: 1px solid #2a2a4a;
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-}
-.prose th {
-  background: #16213e;
-}
-.prose blockquote {
-  border-left: 3px solid #533483;
-  padding-left: 1rem;
-  color: #8892a4;
-}
-.prose ul {
-  list-style: disc;
-  padding-left: 1.5rem;
-}
-.prose ol {
-  list-style: decimal;
-  padding-left: 1.5rem;
-}
-.prose li {
-  margin: 0.25rem 0;
-}
-.prose h1, .prose h2, .prose h3, .prose h4 {
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
+  @apply bg-dark-hover text-accent px-1.5 py-0.5 rounded text-sm;
 }
 .prose p {
-  margin: 0.5rem 0;
+  @apply leading-relaxed my-2;
+}
+.prose ul, .prose ol {
+  @apply my-2 pl-6;
+}
+.prose li {
+  @apply my-1;
+}
+.prose a {
+  @apply text-accent hover:text-accent-hover underline;
+}
+.prose h1, .prose h2, .prose h3 {
+  @apply font-semibold mt-4 mb-2;
+}
+.prose blockquote {
+  @apply border-l-2 border-accent pl-4 italic text-dark-muted my-3;
+}
+.prose table {
+  @apply w-full border-collapse my-3;
+}
+.prose th, .prose td {
+  @apply border border-dark-border px-3 py-2 text-left;
+}
+.prose th {
+  @apply bg-dark-hover font-medium;
 }
