@@ -79,6 +79,7 @@ class QueryRequest(BaseModel):
     project: str = ""
     top_k: int = 5
     session_id: str | None = None  # 传入 session_id 启用多轮对话
+    use_graph_rag: bool = True  # 是否启用 Graph RAG 图谱扩展
 
 
 class Source(BaseModel):

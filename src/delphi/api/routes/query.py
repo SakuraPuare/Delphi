@@ -40,6 +40,7 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
     sessions = request.app.state.sessions
+    graph_store = request.app.state.graph_store
 
     # Session 管理
     session = None
@@ -60,6 +61,8 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
         embedding_client=embedding_client,
         vector_store=vector_store,
         reranker=reranker,
+        use_graph_rag=body.use_graph_rag,
+        graph_store=graph_store,
     )
 
     session_id = session.session_id if session else None
@@ -85,6 +88,7 @@ async def query_stream(body: QueryRequest, request: Request):
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
     sessions = request.app.state.sessions
+    graph_store = request.app.state.graph_store
 
     # Session 管理
     session = None
@@ -107,6 +111,8 @@ async def query_stream(body: QueryRequest, request: Request):
         embedding_client=embedding_client,
         vector_store=vector_store,
         reranker=reranker,
+        use_graph_rag=body.use_graph_rag,
+        graph_store=graph_store,
     )
 
     if not chunks:
