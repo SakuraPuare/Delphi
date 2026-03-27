@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # RAG
     chunk_top_k: int = 5
+    query_rewrite_enabled: bool = True
     reranker_enabled: bool = True
     reranker_top_k: int = 5
     retrieve_top_k: int = 15

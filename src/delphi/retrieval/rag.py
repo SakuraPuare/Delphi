@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from delphi.core.config import settings
+from delphi.retrieval.intent import classify_intent, get_system_prompt
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -21,8 +22,9 @@ SYSTEM_PROMPT = (
     "规则：\n"
     "- 只基于提供的上下文回答，不要编造信息\n"
     '- 如果上下文中没有足够信息，明确说明"根据现有文档，无法回答该问题"\n'
-    "- 回答时引用具体的文件或章节名称\n"
-    "- 代码示例使用代码块格式"
+    "- 在回答中引用来源时，使用格式 [[来源: 文件路径, 行 X-Y]] 标注\n"
+    "- 每个关键论述都应附带来源引用\n"
+    "- 代码示例使用代码块格式，并标注来源文件"
 )
 
 
@@ -61,6 +63,31 @@ class RerankerClient:
         await self._client.aclose()
 
 
+REWRITE_PROMPT = (
+    "你是一个查询改写助手。将用户的自然语言问题改写为更适合向量检索的查询。\n\n"
+    "规则：\n"
+    "- 提取关键技术术语和概念\n"
+    "- 去除口语化表达，保留核心语义\n"
+    "- 如果问题涉及代码，包含可能的函数名、类名、模块名\n"
+    "- 只输出改写后的查询，不要解释\n"
+    "- 如果原始问题已经足够精确，直接返回原文"
+)
+
+
+async def rewrite_query(question: str, vllm_url: str, model: str) -> str:
+    """用 LLM 将模糊问题改写为更精确的检索查询。"""
+    messages = [
+        {"role": "system", "content": REWRITE_PROMPT},
+        {"role": "user", "content": question},
+    ]
+    try:
+        rewritten = await generate_sync(messages, vllm_url, model)
+        return rewritten.strip() or question
+    except Exception:
+        logger.warning("Query rewrite failed, using original question", exc_info=True)
+        return question
+
+
 async def retrieve(
     question: str,
     project: str,
@@ -69,9 +96,16 @@ async def retrieve(
     vector_store: VectorStore,
     reranker: RerankerClient | None = None,
 ) -> list[ScoredChunk]:
+    # Query 改写
+    search_query = question
+    if settings.query_rewrite_enabled:
+        search_query = await rewrite_query(question, settings.vllm_url, settings.llm_model)
+        if search_query != question:
+            logger.info("Query rewritten: '%s' -> '%s'", question, search_query)
+
     # 如果启用了 reranker，先用更大的 retrieve_top_k 召回
     initial_top_k = settings.retrieve_top_k if reranker else top_k
-    embed_result = await embedding_client.embed_all([question])
+    embed_result = await embedding_client.embed_all([search_query])
     query_vector = embed_result.dense[0]
     query_sparse = embed_result.sparse[0]
     results = await vector_store.search(
@@ -106,13 +140,75 @@ async def retrieve(
             for idx, score in ranked
         ]
 
+    chunks = deduplicate_chunks(chunks)
     return chunks
 
 
-def build_prompt(question: str, chunks: list[ScoredChunk]) -> list[dict]:
-    context_parts: list[str] = []
+def _line_overlap_ratio(s1: int, e1: int, s2: int, e2: int) -> float:
+    """计算两个行范围的重叠比例（相对于较小的范围）。"""
+    overlap_start = max(s1, s2)
+    overlap_end = min(e1, e2)
+    if overlap_start > overlap_end:
+        return 0.0
+    overlap_len = overlap_end - overlap_start + 1
+    min_len = min(e1 - s1 + 1, e2 - s2 + 1)
+    return overlap_len / min_len if min_len > 0 else 0.0
+
+
+def deduplicate_chunks(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
+    """去重与合并检索结果。
+
+    1. 完全重复去重：相同 content 的 chunks 只保留 score 最高的
+    2. 重叠去重：同一文件中行范围重叠超过 50% 的，只保留 score 高的
+    """
+    if not chunks:
+        return chunks
+
+    # 1. 完全重复去重（相同 content）
+    seen_content: dict[str, int] = {}  # content -> index of best chunk
+    unique: list[ScoredChunk] = []
     for chunk in chunks:
-        header = f"[来源: {chunk.file_path}"
+        key = chunk.content
+        if key in seen_content:
+            idx = seen_content[key]
+            if chunk.score > unique[idx].score:
+                unique[idx] = chunk
+        else:
+            seen_content[key] = len(unique)
+            unique.append(chunk)
+
+    # 2. 重叠去重：同一文件中行范围重叠 > 50% 的，保留 score 高的
+    result: list[ScoredChunk] = []
+    for chunk in sorted(unique, key=lambda c: c.score, reverse=True):
+        is_overlap = False
+        if chunk.start_line is not None and chunk.end_line is not None:
+            for existing in result:
+                if (
+                    existing.file_path == chunk.file_path
+                    and existing.start_line is not None
+                    and existing.end_line is not None
+                ):
+                    overlap = _line_overlap_ratio(
+                        chunk.start_line,
+                        chunk.end_line,
+                        existing.start_line,
+                        existing.end_line,
+                    )
+                    if overlap > 0.5:
+                        is_overlap = True
+                        break
+        if not is_overlap:
+            result.append(chunk)
+
+    return result
+
+
+def build_prompt(
+    question: str, chunks: list[ScoredChunk], history: list[dict] | None = None
+) -> list[dict]:
+    context_parts: list[str] = []
+    for i, chunk in enumerate(chunks, 1):
+        header = f"[{i}] [来源: {chunk.file_path}"
         if chunk.start_line is not None and chunk.end_line is not None:
             header += f", 行 {chunk.start_line}-{chunk.end_line}"
         header += "]"
@@ -120,10 +216,15 @@ def build_prompt(question: str, chunks: list[ScoredChunk]) -> list[dict]:
 
     context_block = "\n\n".join(context_parts)
     user_content = f"---上下文开始---\n{context_block}\n---上下文结束---\n\n用户问题：{question}\n\n请回答："
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_content},
-    ]
+
+    intent = classify_intent(question)
+    system_prompt = get_system_prompt(intent)
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_content})
+    return messages
 
 
 async def generate(messages: list[dict], vllm_url: str, model: str) -> AsyncIterator[str]:

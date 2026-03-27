@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from delphi.api.app import app
 from delphi.core.clients import EmbeddingResult, SparseVector
-from delphi.retrieval.rag import ScoredChunk, build_prompt
+from delphi.retrieval.rag import ScoredChunk, _line_overlap_ratio, build_prompt, deduplicate_chunks
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -72,6 +72,9 @@ def client():
         a.state.embedding = embedding
         a.state.vector_store = vector_store
         a.state.reranker = None
+        from delphi.retrieval.session import SessionStore
+
+        a.state.sessions = SessionStore()
         yield
 
     original_lifespan = app.router.lifespan_context
@@ -386,3 +389,123 @@ class TestRetrieveWithReranker:
         # vector_store.search 应该用 retrieve_top_k=20 而不是 top_k=5
         search_call = vector_store.search.call_args
         assert search_call.kwargs.get("top_k") == 20 or search_call[1].get("top_k") == 20
+
+
+# ---------------------------------------------------------------------------
+# 去重测试
+# ---------------------------------------------------------------------------
+
+
+class TestLineOverlapRatio:
+    """_line_overlap_ratio 计算测试"""
+
+    def test_complete_overlap(self):
+        assert _line_overlap_ratio(1, 10, 1, 10) == 1.0
+
+    def test_no_overlap(self):
+        assert _line_overlap_ratio(1, 5, 10, 15) == 0.0
+
+    def test_partial_overlap(self):
+        # 范围 1-10 和 6-15，重叠 6-10 = 5 行，较小范围长度 10，比例 = 5/10 = 0.5
+        ratio = _line_overlap_ratio(1, 10, 6, 15)
+        assert ratio == pytest.approx(0.5)
+
+    def test_one_contains_other(self):
+        # 范围 1-20 包含 5-10，重叠 5-10 = 6 行，较小范围 5-10 长度 6，比例 = 1.0
+        assert _line_overlap_ratio(1, 20, 5, 10) == 1.0
+
+    def test_adjacent_no_overlap(self):
+        # 1-5 和 6-10 不重叠
+        assert _line_overlap_ratio(1, 5, 6, 10) == 0.0
+
+    def test_single_line_overlap(self):
+        # 1-5 和 5-10，重叠 5-5 = 1 行，较小范围长度 5，比例 = 1/5 = 0.2
+        ratio = _line_overlap_ratio(1, 5, 5, 10)
+        assert ratio == pytest.approx(0.2)
+
+
+class TestDeduplicateChunks:
+    """deduplicate_chunks 去重测试"""
+
+    def test_empty_list(self):
+        assert deduplicate_chunks([]) == []
+
+    def test_exact_duplicate_keeps_highest_score(self):
+        chunks = [
+            ScoredChunk(content="same content", file_path="a.py", start_line=1, end_line=5, score=0.7),
+            ScoredChunk(content="same content", file_path="a.py", start_line=1, end_line=5, score=0.9),
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 1
+        assert result[0].score == 0.9
+
+    def test_overlapping_same_file_dedup(self):
+        """同文件行范围重叠 > 50% 去重，保留 score 最高的。"""
+        chunks = [
+            ScoredChunk(content="chunk A", file_path="a.py", start_line=1, end_line=10, score=0.9),
+            ScoredChunk(content="chunk B", file_path="a.py", start_line=3, end_line=12, score=0.7),
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 1
+        assert result[0].score == 0.9
+
+    def test_overlapping_different_files_no_dedup(self):
+        """不同文件的重叠行范围不去重。"""
+        chunks = [
+            ScoredChunk(content="chunk A", file_path="a.py", start_line=1, end_line=10, score=0.9),
+            ScoredChunk(content="chunk B", file_path="b.py", start_line=1, end_line=10, score=0.7),
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 2
+
+    def test_no_overlap_all_kept(self):
+        chunks = [
+            ScoredChunk(content="chunk A", file_path="a.py", start_line=1, end_line=5, score=0.9),
+            ScoredChunk(content="chunk B", file_path="a.py", start_line=20, end_line=30, score=0.7),
+            ScoredChunk(content="chunk C", file_path="b.py", start_line=1, end_line=10, score=0.5),
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 3
+
+    def test_none_lines_no_overlap_dedup(self):
+        """start_line/end_line 为 None 时不做重叠去重。"""
+        chunks = [
+            ScoredChunk(content="chunk A", file_path="a.py", start_line=None, end_line=None, score=0.9),
+            ScoredChunk(content="chunk B", file_path="a.py", start_line=None, end_line=None, score=0.7),
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Query rewrite tests
+# ---------------------------------------------------------------------------
+
+
+class TestRewriteQuery:
+    @pytest.mark.asyncio
+    @patch("delphi.retrieval.rag.generate_sync")
+    async def test_successful_rewrite(self, mock_gen):
+        from delphi.retrieval.rag import rewrite_query
+
+        mock_gen.return_value = "EmbeddingClient 配置方法"
+        result = await rewrite_query("怎么配置那个嵌入的东西", "http://fake:8000", "model")
+        assert result == "EmbeddingClient 配置方法"
+
+    @pytest.mark.asyncio
+    @patch("delphi.retrieval.rag.generate_sync")
+    async def test_rewrite_failure_fallback(self, mock_gen):
+        from delphi.retrieval.rag import rewrite_query
+
+        mock_gen.side_effect = Exception("LLM down")
+        result = await rewrite_query("原始问题", "http://fake:8000", "model")
+        assert result == "原始问题"
+
+    @pytest.mark.asyncio
+    @patch("delphi.retrieval.rag.generate_sync")
+    async def test_empty_rewrite_fallback(self, mock_gen):
+        from delphi.retrieval.rag import rewrite_query
+
+        mock_gen.return_value = "   "
+        result = await rewrite_query("原始问题", "http://fake:8000", "model")
+        assert result == "原始问题"

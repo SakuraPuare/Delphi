@@ -66,6 +66,13 @@ _CHUNK_NODE_TYPES: set[str] = {
     "struct_item",  # Rust
 }
 
+_NAME_NODE_TYPES: set[str] = {
+    "identifier",
+    "name",
+    "property_identifier",
+    "type_identifier",
+}
+
 MAX_CHUNK_LINES = 100
 FALLBACK_WINDOW = 50
 FALLBACK_OVERLAP = 10
@@ -94,6 +101,24 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
     return chunks
 
 
+def _get_symbol_name(node: Node) -> str:
+    """从 AST 节点提取符号名称。"""
+    for child in node.children:
+        if child.type in _NAME_NODE_TYPES:
+            return child.text.decode(errors="replace") if child.text else ""
+    return ""
+
+
+def _get_parent_symbol(node: Node) -> str:
+    """向上查找父级符号名称（如方法所属的类）。"""
+    parent = node.parent
+    while parent:
+        if parent.type in _CHUNK_NODE_TYPES:
+            return _get_symbol_name(parent)
+        parent = parent.parent
+    return ""
+
+
 def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
     """Recursively extract chunk-worthy nodes."""
     if node.type in _CHUNK_NODE_TYPES:
@@ -108,15 +133,21 @@ def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
                         start_line=node.start_point.row + 1,
                         end_line=node.end_point.row + 1,
                         node_type=node.type,
+                        symbol_name=_get_symbol_name(node),
+                        parent_symbol=_get_parent_symbol(node),
                     ),
                 )
             )
         else:
             # Split oversized nodes with sliding window
+            symbol = _get_symbol_name(node)
+            parent = _get_parent_symbol(node)
             for sub in fallback_chunk(text, FALLBACK_WINDOW, FALLBACK_OVERLAP):
                 sub.metadata.node_type = node.type
                 sub.metadata.start_line += node.start_point.row
                 sub.metadata.end_line += node.start_point.row
+                sub.metadata.symbol_name = symbol
+                sub.metadata.parent_symbol = parent
                 chunks.append(sub)
         return  # Don't recurse into children of extracted nodes
 

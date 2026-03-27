@@ -120,3 +120,42 @@ def test_chunk_file_markdown(tmp_path: Path):
     chunks = chunk_file(md_file)
     assert len(chunks) >= 1
     assert chunks[0].metadata.language == ""  # markdown not in EXT_MAP as code
+
+
+# ---------------------------------------------------------------------------
+# Symbol extraction (metadata enrichment) tests
+# ---------------------------------------------------------------------------
+
+
+class TestSymbolExtraction:
+    def test_python_function_name(self):
+        code = b"def hello_world():\n    pass\n"
+        chunks = parse_code(code, "python")
+        assert len(chunks) >= 1
+        assert chunks[0].metadata.symbol_name == "hello_world"
+
+    def test_python_class_name(self):
+        code = b"class MyClass:\n    pass\n"
+        chunks = parse_code(code, "python")
+        assert len(chunks) >= 1
+        assert chunks[0].metadata.symbol_name == "MyClass"
+
+    def test_python_method_parent(self):
+        code = b"class Foo:\n    def bar(self):\n        pass\n"
+        chunks = parse_code(code, "python")
+        # class_definition 包含 method，_extract_nodes 不递归进已提取的节点
+        # 所以只有一个 class chunk，symbol_name = "Foo"
+        assert any(c.metadata.symbol_name == "Foo" for c in chunks)
+
+    def test_javascript_function_name(self):
+        code = b"function greet(name) {\n  return 'hello ' + name;\n}\n"
+        chunks = parse_code(code, "javascript")
+        assert len(chunks) >= 1
+        assert chunks[0].metadata.symbol_name == "greet"
+
+    def test_no_symbol_fallback(self):
+        code = b"x = 1\ny = 2\n"
+        chunks = parse_code(code, "python")
+        # 没有函数/类定义，走 fallback
+        for c in chunks:
+            assert c.metadata.symbol_name == ""
