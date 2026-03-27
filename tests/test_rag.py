@@ -37,9 +37,7 @@ def _make_mock_app_state():
     """Return mocked embedding + vector_store attached to app.state."""
     embedding = AsyncMock()
     fake_sparse = SparseVector(indices=[0, 1, 2], values=[0.1, 0.2, 0.3])
-    embedding.embed_all = AsyncMock(
-        return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-    )
+    embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
     vector_store = AsyncMock()
     return embedding, vector_store
 
@@ -304,9 +302,7 @@ class TestRetrieveWithReranker:
 
         fake_sparse = SparseVector(indices=[0], values=[1.0])
         embedding_client = AsyncMock()
-        embedding_client.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-        )
+        embedding_client.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
 
         points = _scored_points_from_chunks(SAMPLE_CHUNKS)
         vector_store = AsyncMock()
@@ -330,9 +326,7 @@ class TestRetrieveWithReranker:
 
         fake_sparse = SparseVector(indices=[0], values=[1.0])
         embedding_client = AsyncMock()
-        embedding_client.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-        )
+        embedding_client.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
 
         points = _scored_points_from_chunks(SAMPLE_CHUNKS)
         vector_store = AsyncMock()
@@ -367,9 +361,7 @@ class TestRetrieveWithReranker:
 
         fake_sparse = SparseVector(indices=[0], values=[1.0])
         embedding_client = AsyncMock()
-        embedding_client.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-        )
+        embedding_client.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
 
         points = _scored_points_from_chunks(SAMPLE_CHUNKS)
         vector_store = AsyncMock()

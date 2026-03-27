@@ -73,11 +73,15 @@ async def _insert_points(vs: VectorStore, collection: str, items: list[dict]) ->
 class TestGetExistingHashes:
     @pytest.mark.asyncio
     async def test_returns_correct_mapping(self, vs):
-        await _insert_points(vs, "inc", [
-            {"file_path": "a.py", "file_hash": "aaa"},
-            {"file_path": "a.py", "file_hash": "aaa"},
-            {"file_path": "b.py", "file_hash": "bbb"},
-        ])
+        await _insert_points(
+            vs,
+            "inc",
+            [
+                {"file_path": "a.py", "file_hash": "aaa"},
+                {"file_path": "a.py", "file_hash": "aaa"},
+                {"file_path": "b.py", "file_hash": "bbb"},
+            ],
+        )
         result = await get_existing_hashes(vs, "inc")
         assert result == {
             "a.py": {"aaa"},
@@ -86,10 +90,14 @@ class TestGetExistingHashes:
 
     @pytest.mark.asyncio
     async def test_multiple_hashes_per_file(self, vs):
-        await _insert_points(vs, "inc2", [
-            {"file_path": "x.py", "file_hash": "h1"},
-            {"file_path": "x.py", "file_hash": "h2"},
-        ])
+        await _insert_points(
+            vs,
+            "inc2",
+            [
+                {"file_path": "x.py", "file_hash": "h1"},
+                {"file_path": "x.py", "file_hash": "h2"},
+            ],
+        )
         result = await get_existing_hashes(vs, "inc2")
         assert result == {"x.py": {"h1", "h2"}}
 
@@ -113,12 +121,16 @@ class TestGetExistingHashes:
 class TestDeleteFileChunks:
     @pytest.mark.asyncio
     async def test_deletes_only_target_file(self, vs):
-        await _insert_points(vs, "del", [
-            {"file_path": "keep.py", "file_hash": "k1", "text": "keep"},
-            {"file_path": "keep.py", "file_hash": "k1", "text": "keep2"},
-            {"file_path": "remove.py", "file_hash": "r1", "text": "gone"},
-            {"file_path": "remove.py", "file_hash": "r1", "text": "gone2"},
-        ])
+        await _insert_points(
+            vs,
+            "del",
+            [
+                {"file_path": "keep.py", "file_hash": "k1", "text": "keep"},
+                {"file_path": "keep.py", "file_hash": "k1", "text": "keep2"},
+                {"file_path": "remove.py", "file_hash": "r1", "text": "gone"},
+                {"file_path": "remove.py", "file_hash": "r1", "text": "gone2"},
+            ],
+        )
         assert await vs.count("del") == 4
 
         await delete_file_chunks(vs, "del", "remove.py")
@@ -130,8 +142,12 @@ class TestDeleteFileChunks:
 
     @pytest.mark.asyncio
     async def test_noop_when_file_not_present(self, vs):
-        await _insert_points(vs, "del2", [
-            {"file_path": "a.py", "file_hash": "h1"},
-        ])
+        await _insert_points(
+            vs,
+            "del2",
+            [
+                {"file_path": "a.py", "file_hash": "h1"},
+            ],
+        )
         await delete_file_chunks(vs, "del2", "nonexistent.py")
         assert await vs.count("del2") == 1

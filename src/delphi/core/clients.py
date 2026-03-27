@@ -135,18 +135,15 @@ class VectorStore:
         sparse_vectors: list[SparseVector] | None = None,
     ) -> None:
         points: list[models.PointStruct] = []
-        for idx, (uid, dense_vec, payload) in enumerate(
-            zip(ids, vectors, payloads, strict=False)
-        ):
+        for idx, (uid, dense_vec, payload) in enumerate(zip(ids, vectors, payloads, strict=False)):
             vector: dict = {"dense": dense_vec}
             if sparse_vectors is not None:
                 sv = sparse_vectors[idx]
                 vector["sparse"] = models.SparseVector(
-                    indices=sv.indices, values=sv.values,
+                    indices=sv.indices,
+                    values=sv.values,
                 )
-            points.append(
-                models.PointStruct(id=uid, vector=vector, payload=payload)
-            )
+            points.append(models.PointStruct(id=uid, vector=vector, payload=payload))
         await self._client.upsert(collection_name=collection, points=points)
 
     async def search(

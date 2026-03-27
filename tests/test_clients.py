@@ -181,9 +181,7 @@ class TestEmbeddingClientEmbedSparse:
             nonlocal call_count
             call_count += 1
             resp = MagicMock()
-            resp.json.return_value = [
-                [{"index": i, "value": 0.1 * (i + 1)}] for i in range(len(json["inputs"]))
-            ]
+            resp.json.return_value = [[{"index": i, "value": 0.1 * (i + 1)}] for i in range(len(json["inputs"]))]
             resp.raise_for_status = MagicMock()
             return resp
 
@@ -297,9 +295,7 @@ class TestVectorStoreHybridSearch:
         await store.upsert("hs", ids, dense_vecs, payloads, sparse_vectors=sparse_vecs)
 
         query_sparse = SparseVector(indices=[0, 1], values=[1.0, 0.5])
-        results = await store.search(
-            "hs", vector=[1.0] * DIM, sparse_vector=query_sparse, top_k=2
-        )
+        results = await store.search("hs", vector=[1.0] * DIM, sparse_vector=query_sparse, top_k=2)
         assert len(results) <= 2
         assert all(hasattr(r, "payload") for r in results)
 

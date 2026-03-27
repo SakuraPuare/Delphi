@@ -44,9 +44,7 @@ class RerankerClient:
         self.base_url = (base_url or settings.reranker_url).rstrip("/")
         self._client = httpx.AsyncClient(timeout=60.0)
 
-    async def rerank(
-        self, query: str, texts: list[str], top_k: int | None = None
-    ) -> list[tuple[int, float]]:
+    async def rerank(self, query: str, texts: list[str], top_k: int | None = None) -> list[tuple[int, float]]:
         """调用 TEI /rerank 接口，返回 [(original_index, score), ...] 按 score 降序"""
         resp = await self._client.post(
             f"{self.base_url}/rerank",
@@ -203,9 +201,7 @@ def deduplicate_chunks(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
     return result
 
 
-def build_prompt(
-    question: str, chunks: list[ScoredChunk], history: list[dict] | None = None
-) -> list[dict]:
+def build_prompt(question: str, chunks: list[ScoredChunk], history: list[dict] | None = None) -> list[dict]:
     context_parts: list[str] = []
     for i, chunk in enumerate(chunks, 1):
         header = f"[{i}] [来源: {chunk.file_path}"

@@ -73,9 +73,7 @@ async def query(body: QueryRequest, request: Request) -> QueryResponse:
     if session:
         session.add_assistant_message(answer)
 
-    return QueryResponse(
-        answer=answer, sources=_chunks_to_sources(chunks), session_id=session_id
-    )
+    return QueryResponse(answer=answer, sources=_chunks_to_sources(chunks), session_id=session_id)
 
 
 @router.post("/query/stream")

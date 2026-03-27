@@ -209,11 +209,7 @@ def test_chunk_doc_file_pdf(tmp_path: Path):
 # HTML tests
 # ---------------------------------------------------------------------------
 
-SAMPLE_HTML = (
-    "<html><body><h1>Title</h1>"
-    "<p>Hello world. This is a test paragraph.</p>"
-    "</body></html>"
-)
+SAMPLE_HTML = "<html><body><h1>Title</h1><p>Hello world. This is a test paragraph.</p></body></html>"
 
 
 def test_chunk_html_basic():

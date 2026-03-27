@@ -1,4 +1,5 @@
 """会话管理：内存存储对话历史（MVP 阶段）"""
+
 from __future__ import annotations
 
 import time
@@ -55,7 +56,5 @@ class SessionStore:
     def _evict_if_needed(self) -> None:
         """超过上限时删除最旧的 session。"""
         if len(self._sessions) > self._max_sessions:
-            oldest_id = min(
-                self._sessions, key=lambda k: self._sessions[k].created_at
-            )
+            oldest_id = min(self._sessions, key=lambda k: self._sessions[k].created_at)
             del self._sessions[oldest_id]

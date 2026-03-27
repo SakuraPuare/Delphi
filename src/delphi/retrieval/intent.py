@@ -1,4 +1,5 @@
 """意图识别与路由"""
+
 from __future__ import annotations
 
 import logging
@@ -37,9 +38,9 @@ _DOC_PATTERNS = [
 
 def classify_intent(question: str) -> Intent:
     """基于关键词规则快速分类用户意图。"""
-    code_score = sum(
-        1 for p in _CODE_KEYWORD_PATTERNS if re.search(p, question, re.IGNORECASE)
-    ) + sum(1 for p in _CODE_STYLE_PATTERNS if re.search(p, question))
+    code_score = sum(1 for p in _CODE_KEYWORD_PATTERNS if re.search(p, question, re.IGNORECASE)) + sum(
+        1 for p in _CODE_STYLE_PATTERNS if re.search(p, question)
+    )
     doc_score = sum(1 for p in _DOC_PATTERNS if re.search(p, question, re.IGNORECASE))
 
     if code_score > doc_score:
