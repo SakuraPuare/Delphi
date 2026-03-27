@@ -164,9 +164,65 @@ def chunk_text(text: str) -> list[Chunk]:
     return chunks
 
 
+def chunk_pdf(path: Path) -> list[Chunk]:
+    """按页提取 PDF 文本，每页作为一个 chunk，过长的页再用段落切分。"""
+    import fitz  # pymupdf
+
+    chunks: list[Chunk] = []
+    doc = fitz.open(path)
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text().strip()
+        if not text:
+            continue
+        lines = text.splitlines()
+        if len(lines) > MAX_SECTION_LINES:
+            # 过长的页按段落切分
+            sub_chunks = chunk_text(text)
+            for c in sub_chunks:
+                c.metadata.language = "pdf"
+                c.metadata.node_type = f"page_{page_num + 1}"
+            chunks.extend(sub_chunks)
+        else:
+            chunks.append(
+                Chunk(
+                    text=text,
+                    metadata=ChunkMetadata(
+                        start_line=page_num + 1,  # 用 page number 作为 start_line
+                        end_line=page_num + 1,
+                        node_type=f"page_{page_num + 1}",
+                        language="pdf",
+                    ),
+                )
+            )
+    doc.close()
+    return chunks
+
+
+def chunk_html(text: str) -> list[Chunk]:
+    """用 trafilatura 提取 HTML 正文，然后按段落切分。"""
+    from trafilatura import extract
+
+    body = extract(text, include_comments=False, include_tables=True, output_format="txt")
+    if not body or not body.strip():
+        return []
+    chunks = chunk_text(body)
+    for c in chunks:
+        c.metadata.language = "html"
+    return chunks
+
+
 def chunk_doc_file(path: Path) -> list[Chunk]:
     """Detect file type and chunk accordingly. Fill in file-level metadata."""
     ext = path.suffix.lower()
+
+    # PDF 需要特殊处理（二进制文件）
+    if ext == ".pdf":
+        chunks = chunk_pdf(path)
+        for c in chunks:
+            c.metadata.file_path = str(path)
+        return chunks
+
     content = path.read_text(errors="replace")
 
     if ext in (".md", ".mdx"):
@@ -175,6 +231,9 @@ def chunk_doc_file(path: Path) -> list[Chunk]:
     elif ext == ".txt":
         chunks = chunk_text(content)
         lang = "text"
+    elif ext in (".html", ".htm"):
+        chunks = chunk_html(content)
+        lang = "html"
     else:
         chunks = fallback_chunk(content)
         lang = ext.lstrip(".")
