@@ -144,9 +144,7 @@ async def run_media_import(
             await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse)
 
             embed_progress = 60 + (batch_idx + 1) / total_batches * 35
-            task_manager.update_progress(
-                task_id, embed_progress, f"Embedding & 存储: {batch_idx + 1}/{total_batches}"
-            )
+            task_manager.update_progress(task_id, embed_progress, f"Embedding & 存储: {batch_idx + 1}/{total_batches}")
 
         elapsed = time.monotonic() - t0
         logger.info("Embedded & stored %d media chunks in %.1fs", len(all_chunks), elapsed)

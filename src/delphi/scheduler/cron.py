@@ -16,11 +16,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 _FIELD_RANGES: list[tuple[int, int]] = [
-    (0, 59),   # minute
-    (0, 23),   # hour
-    (1, 31),   # day of month
-    (1, 12),   # month
-    (0, 6),    # day of week (0=Mon … 6=Sun)
+    (0, 59),  # minute
+    (0, 23),  # hour
+    (1, 31),  # day of month
+    (1, 12),  # month
+    (0, 6),  # day of week (0=Mon … 6=Sun)
 ]
 
 _FIELD_NAMES: list[str] = ["minute", "hour", "day", "month", "weekday"]
