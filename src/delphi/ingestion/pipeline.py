@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from delphi.ingestion.chunker import chunk_file
 from delphi.ingestion.git import clone_repo, collect_files
+from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
 
 if TYPE_CHECKING:
     from delphi.core.clients import EmbeddingClient, VectorStore
@@ -74,43 +75,76 @@ async def run_git_import(
 
         # 2. Collect files
         files = collect_files(repo_path, include=include, exclude=exclude)
-        task["total"] = len(files)
         logger.info("Collected %d files from %s", len(files), url)
 
-        # 3. Parse & chunk
+        # 3. Incremental: compute hashes & diff against existing
+        await vector_store.ensure_collection(project)
+        existing_hashes = await get_existing_hashes(vector_store, project)
+
+        file_hash_map: dict[str, str] = {}  # rel_path -> hash
+        for fpath in files:
+            rel_path = str(fpath.relative_to(repo_path))
+            file_hash_map[rel_path] = compute_file_hash(fpath)
+
+        # Find changed or new files
+        changed_files: list[Path] = []
+        for fpath in files:
+            rel_path = str(fpath.relative_to(repo_path))
+            current_hash = file_hash_map[rel_path]
+            existing = existing_hashes.get(rel_path, set())
+            if current_hash not in existing:
+                changed_files.append(fpath)
+
+        # Delete chunks for files that no longer exist
+        current_paths = set(file_hash_map.keys())
+        for old_path in existing_hashes:
+            if old_path not in current_paths:
+                await delete_file_chunks(vector_store, project, old_path)
+
+        # Delete old chunks for changed files (will be re-created below)
+        for fpath in changed_files:
+            rel_path = str(fpath.relative_to(repo_path))
+            if rel_path in existing_hashes:
+                await delete_file_chunks(vector_store, project, rel_path)
+
+        task["total"] = len(changed_files)
+        if not changed_files:
+            logger.info("No changes detected, skipping import for %s", project)
+            task["status"] = "done"
+            return
+
+        # 4. Parse & chunk (only changed files)
         all_chunks: list[Chunk] = []
-        for i, fpath in enumerate(files):
+        for i, fpath in enumerate(changed_files):
             try:
                 rel_path = fpath.relative_to(repo_path)
                 chunks = chunk_file(fpath, repo_url=url)
-                # Normalize file_path to relative
+                current_hash = file_hash_map[str(rel_path)]
                 for c in chunks:
                     c.metadata.file_path = str(rel_path)
+                    c.metadata.file_hash = current_hash
                 all_chunks.extend(chunks)
             except Exception:
                 logger.warning("Failed to parse %s, skipping", fpath, exc_info=True)
             task["processed"] = i + 1
-            task["progress"] = (i + 1) / len(files) if files else 1.0
+            task["progress"] = (i + 1) / len(changed_files) if changed_files else 1.0
 
-        logger.info("Generated %d chunks from %d files", len(all_chunks), len(files))
+        logger.info("Generated %d chunks from %d changed files", len(all_chunks), len(changed_files))
 
         if not all_chunks:
             task["status"] = "done"
             return
 
-        # 4. Recreate collection (idempotent re-import)
-        await vector_store.recreate_collection(project)
-
-        # 5. Embed & upsert in batches
+        # 5. Embed & upsert in batches (dense + sparse)
         t0 = time.monotonic()
         for i in range(0, len(all_chunks), EMBED_BATCH):
             batch = all_chunks[i : i + EMBED_BATCH]
             texts = [c.text for c in batch]
-            vectors = await embedding.embed(texts)
+            result = await embedding.embed_all(texts)
 
             ids = [uuid.uuid4().hex for _ in batch]
             payloads = [{"text": c.text, **asdict(c.metadata)} for c in batch]
-            await vector_store.upsert(project, ids, vectors, payloads)
+            await vector_store.upsert(project, ids, result.dense, payloads, sparse_vectors=result.sparse)
 
         elapsed = time.monotonic() - t0
         logger.info("Embedded & stored %d chunks in %.1fs", len(all_chunks), elapsed)
