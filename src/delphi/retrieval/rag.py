@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import httpx
 
 from delphi.core.config import settings
+from delphi.core.telemetry import get_tracer
 from delphi.retrieval.intent import classify_intent, get_system_prompt
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from delphi.core.clients import EmbeddingClient, VectorStore
+    from delphi.graph.store import GraphStore
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
 
 SYSTEM_PROMPT = (
     "你是一个代码与文档问答助手。请根据以下检索到的上下文内容回答用户的问题。\n\n"
@@ -76,10 +80,10 @@ async def rewrite_query(question: str, vllm_url: str, model: str) -> str:
     """用 LLM 将模糊问题改写为更精确的检索查询。"""
     messages = [
         {"role": "system", "content": REWRITE_PROMPT},
-        {"role": "user", "content": question},
+        {"role": "user", "content": f"/no_think\n{question}"},
     ]
     try:
-        rewritten = await generate_sync(messages, vllm_url, model)
+        rewritten = await generate_sync(messages, vllm_url, model, max_tokens=100)
         return rewritten.strip() or question
     except Exception:
         logger.warning("Query rewrite failed, using original question", exc_info=True)
@@ -93,53 +97,76 @@ async def retrieve(
     embedding_client: EmbeddingClient,
     vector_store: VectorStore,
     reranker: RerankerClient | None = None,
+    use_graph_rag: bool = True,
+    graph_store: GraphStore | None = None,
 ) -> list[ScoredChunk]:
-    # Query 改写
-    search_query = question
-    if settings.query_rewrite_enabled:
-        search_query = await rewrite_query(question, settings.vllm_url, settings.llm_model)
-        if search_query != question:
-            logger.info("Query rewritten: '%s' -> '%s'", question, search_query)
+    with _tracer.start_as_current_span("rag.retrieve") as span:
+        span.set_attribute("rag.query", question)
+        span.set_attribute("rag.project", project)
+        span.set_attribute("rag.top_k", top_k)
+        t0 = time.monotonic()
 
-    # 如果启用了 reranker，先用更大的 retrieve_top_k 召回
-    initial_top_k = settings.retrieve_top_k if reranker else top_k
-    embed_result = await embedding_client.embed_all([search_query])
-    query_vector = embed_result.dense[0]
-    query_sparse = embed_result.sparse[0] if embed_result.sparse else None
-    results = await vector_store.search(
-        collection=project, vector=query_vector, sparse_vector=query_sparse, top_k=initial_top_k
-    )
-    chunks: list[ScoredChunk] = []
-    for point in results:
-        payload = point.payload or {}
-        chunks.append(
-            ScoredChunk(
-                content=payload.get("text", payload.get("content", "")),
-                file_path=payload.get("file_path", ""),
-                start_line=payload.get("start_line"),
-                end_line=payload.get("end_line"),
-                score=point.score,
+        # Query 改写
+        search_query = question
+        if settings.query_rewrite_enabled:
+            search_query = await rewrite_query(question, settings.vllm_url, settings.llm_model)
+            if search_query != question:
+                logger.info("Query rewritten: '%s' -> '%s'", question, search_query)
+
+        # 向量检索
+        with _tracer.start_as_current_span("rag.vector_search") as vs_span:
+            initial_top_k = settings.retrieve_top_k if reranker else top_k
+            embed_result = await embedding_client.embed_all([search_query])
+            query_vector = embed_result.dense[0]
+            query_sparse = embed_result.sparse[0] if embed_result.sparse else None
+            results = await vector_store.search(
+                collection=project, vector=query_vector, sparse_vector=query_sparse, top_k=initial_top_k
             )
-        )
+            vs_span.set_attribute("rag.vector_search.num_results", len(results))
 
-    # Rerank 阶段
-    if reranker and chunks:
-        texts = [c.content for c in chunks]
-        rerank_top_k = min(settings.reranker_top_k, top_k)
-        ranked = await reranker.rerank(query=question, texts=texts, top_k=rerank_top_k)
-        chunks = [
-            ScoredChunk(
-                content=chunks[idx].content,
-                file_path=chunks[idx].file_path,
-                start_line=chunks[idx].start_line,
-                end_line=chunks[idx].end_line,
-                score=score,
+        chunks: list[ScoredChunk] = []
+        for point in results:
+            payload = point.payload or {}
+            chunks.append(
+                ScoredChunk(
+                    content=payload.get("text", payload.get("content", "")),
+                    file_path=payload.get("file_path", ""),
+                    start_line=payload.get("start_line"),
+                    end_line=payload.get("end_line"),
+                    score=point.score,
+                )
             )
-            for idx, score in ranked
-        ]
 
-    chunks = deduplicate_chunks(chunks)
-    return chunks
+        # Graph RAG 扩展：在 rerank 之前，通过图谱关系补充关联代码片段
+        if use_graph_rag and chunks:
+            from delphi.retrieval.graph_rag import expand_with_graph
+
+            chunks = expand_with_graph(chunks, project, graph_store=graph_store)
+
+        # Rerank 阶段
+        if reranker and chunks:
+            with _tracer.start_as_current_span("rag.rerank") as rr_span:
+                texts = [c.content for c in chunks]
+                rerank_top_k = min(settings.reranker_top_k, top_k)
+                ranked = await reranker.rerank(query=question, texts=texts, top_k=rerank_top_k)
+                rr_span.set_attribute("rag.rerank.input_count", len(chunks))
+                rr_span.set_attribute("rag.rerank.output_count", len(ranked))
+                chunks = [
+                    ScoredChunk(
+                        content=chunks[idx].content,
+                        file_path=chunks[idx].file_path,
+                        start_line=chunks[idx].start_line,
+                        end_line=chunks[idx].end_line,
+                        score=score,
+                    )
+                    for idx, score in ranked
+                ]
+
+        chunks = deduplicate_chunks(chunks)
+        elapsed = time.monotonic() - t0
+        span.set_attribute("rag.retrieve.latency_ms", round(elapsed * 1000, 2))
+        span.set_attribute("rag.retrieve.num_results", len(chunks))
+        return chunks
 
 
 def _line_overlap_ratio(s1: int, e1: int, s2: int, e2: int) -> float:
@@ -202,53 +229,81 @@ def deduplicate_chunks(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
 
 
 def build_prompt(question: str, chunks: list[ScoredChunk], history: list[dict] | None = None) -> list[dict]:
-    context_parts: list[str] = []
-    for i, chunk in enumerate(chunks, 1):
-        header = f"[{i}] [来源: {chunk.file_path}"
-        if chunk.start_line is not None and chunk.end_line is not None:
-            header += f", 行 {chunk.start_line}-{chunk.end_line}"
-        header += "]"
-        context_parts.append(f"{header}\n{chunk.content}")
+    with _tracer.start_as_current_span("rag.prompt_build") as span:
+        span.set_attribute("rag.prompt_build.num_chunks", len(chunks))
+        context_parts: list[str] = []
+        for i, chunk in enumerate(chunks, 1):
+            header = f"[{i}] [来源: {chunk.file_path}"
+            if chunk.start_line is not None and chunk.end_line is not None:
+                header += f", 行 {chunk.start_line}-{chunk.end_line}"
+            header += "]"
+            context_parts.append(f"{header}\n{chunk.content}")
 
-    context_block = "\n\n".join(context_parts)
-    user_content = f"---上下文开始---\n{context_block}\n---上下文结束---\n\n用户问题：{question}\n\n请回答："
+        context_block = "\n\n".join(context_parts)
+        user_content = (
+            f"/no_think\n---上下文开始---\n{context_block}\n---上下文结束---\n\n用户问题：{question}\n\n请回答："
+        )
 
-    intent = classify_intent(question)
-    system_prompt = get_system_prompt(intent)
+        intent = classify_intent(question)
+        system_prompt = get_system_prompt(intent)
 
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    if history:
-        messages.extend(history)
-    messages.append({"role": "user", "content": user_content})
-    return messages
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_content})
+        span.set_attribute("rag.prompt_build.intent", str(intent))
+        return messages
+
+
+def _llm_headers() -> dict[str, str]:
+    if settings.llm_api_key:
+        return {"Authorization": f"Bearer {settings.llm_api_key}"}
+    return {}
 
 
 async def generate(messages: list[dict], vllm_url: str, model: str) -> AsyncIterator[str]:
-    url = f"{vllm_url.rstrip('/')}/v1/chat/completions"
-    payload = {"model": model, "messages": messages, "stream": True}
-    async with httpx.AsyncClient(timeout=120.0) as client, client.stream("POST", url, json=payload) as resp:
-        resp.raise_for_status()
-        async for line in resp.aiter_lines():
-            if not line.startswith("data: "):
-                continue
-            data = line[len("data: ") :]
-            if data.strip() == "[DONE]":
-                break
-            try:
-                obj = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-            delta = obj.get("choices", [{}])[0].get("delta", {})
-            content = delta.get("content")
-            if content:
-                yield content
+    with _tracer.start_as_current_span("rag.llm_call") as span:
+        span.set_attribute("rag.llm.model", model)
+        span.set_attribute("rag.llm.stream", True)
+        t0 = time.monotonic()
+        url = f"{vllm_url.rstrip('/')}/v1/chat/completions"
+        payload = {"model": model, "messages": messages, "stream": True}
+        headers = _llm_headers()
+        async with (
+            httpx.AsyncClient(timeout=300.0) as client,
+            client.stream("POST", url, json=payload, headers=headers) as resp,
+        ):
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[len("data: ") :]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                delta = obj.get("choices", [{}])[0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    yield content
+        span.set_attribute("rag.llm.latency_ms", round((time.monotonic() - t0) * 1000, 2))
 
 
-async def generate_sync(messages: list[dict], vllm_url: str, model: str) -> str:
-    url = f"{vllm_url.rstrip('/')}/v1/chat/completions"
-    payload = {"model": model, "messages": messages, "stream": False}
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+async def generate_sync(messages: list[dict], vllm_url: str, model: str, max_tokens: int | None = None) -> str:
+    with _tracer.start_as_current_span("rag.llm_call") as span:
+        span.set_attribute("rag.llm.model", model)
+        span.set_attribute("rag.llm.stream", False)
+        t0 = time.monotonic()
+        url = f"{vllm_url.rstrip('/')}/v1/chat/completions"
+        payload: dict = {"model": model, "messages": messages, "stream": False}
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        headers = _llm_headers()
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            span.set_attribute("rag.llm.latency_ms", round((time.monotonic() - t0) * 1000, 2))
+            return data["choices"][0]["message"]["content"]

@@ -8,8 +8,10 @@ import httpx
 from qdrant_client import AsyncQdrantClient, models
 
 from delphi.core.config import settings
+from delphi.core.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
 
 
 @dataclass
@@ -29,12 +31,13 @@ class EmbeddingResult:
 
 
 class EmbeddingClient:
-    """BGE-M3 embedding 服务客户端（兼容 HuggingFace TEI 和 Ollama 接口）"""
+    """Embedding 服务客户端（兼容 TEI / Ollama / OpenAI 兼容 / Cloudflare Workers AI）"""
 
     def __init__(self, base_url: str | None = None, batch_size: int = 32, backend: str | None = None) -> None:
         self.base_url = (base_url or settings.embedding_url).rstrip("/")
         self.batch_size = batch_size
         self.backend = backend or settings.embedding_backend
+        self._api_key = settings.embedding_api_key
         self._client = httpx.AsyncClient(timeout=120.0)
 
     async def _embed_tei(self, texts: list[str]) -> list[list[float]]:
@@ -61,14 +64,60 @@ class EmbeddingClient:
             all_embeddings.extend(resp.json()["embeddings"])
         return all_embeddings
 
+    def _auth_headers(self) -> dict[str, str]:
+        if self._api_key:
+            return {"Authorization": f"Bearer {self._api_key}"}
+        return {}
+
+    async def _embed_openai(self, texts: list[str]) -> list[list[float]]:
+        """OpenAI 兼容接口（DeepSeek / Together / Fireworks 等）"""
+        headers = self._auth_headers()
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            resp = await self._client.post(
+                f"{self.base_url}/v1/embeddings",
+                json={"model": settings.embedding_model, "input": batch},
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()["data"]
+            data.sort(key=lambda x: x["index"])
+            all_embeddings.extend(item["embedding"] for item in data)
+        return all_embeddings
+
+    async def _embed_cloudflare(self, texts: list[str]) -> list[list[float]]:
+        """Cloudflare Workers AI 接口"""
+        headers = self._auth_headers()
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            resp = await self._client.post(
+                self.base_url,
+                json={"text": batch},
+                headers=headers,
+            )
+            resp.raise_for_status()
+            all_embeddings.extend(resp.json()["result"]["data"])
+        return all_embeddings
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        if self.backend == "ollama":
-            return await self._embed_ollama(texts)
-        return await self._embed_tei(texts)
+        with _tracer.start_as_current_span("embedding.embed") as span:
+            span.set_attribute("embedding.backend", self.backend)
+            span.set_attribute("embedding.num_texts", len(texts))
+            match self.backend:
+                case "ollama":
+                    return await self._embed_ollama(texts)
+                case "openai":
+                    return await self._embed_openai(texts)
+                case "cloudflare":
+                    return await self._embed_cloudflare(texts)
+                case _:
+                    return await self._embed_tei(texts)
 
     async def embed_sparse(self, texts: list[str]) -> list[SparseVector]:
-        """调用 TEI /embed_sparse 接口获取稀疏向量。Ollama 不支持，返回空列表。"""
-        if self.backend == "ollama":
+        """调用 TEI /embed_sparse 接口获取稀疏向量。仅 TEI 后端支持。"""
+        if self.backend != "tei":
             return []
         all_sparse: list[SparseVector] = []
         for i in range(0, len(texts), self.batch_size):
@@ -176,33 +225,38 @@ class VectorStore:
         top_k: int = 5,
         sparse_vector: SparseVector | None = None,
     ) -> list[models.ScoredPoint]:
-        if sparse_vector is not None:
-            # 混合检索：dense + sparse prefetch，RRF 融合
-            result = await self._client.query_points(
-                collection_name=collection,
-                prefetch=[
-                    models.Prefetch(query=vector, using="dense", limit=top_k * 2),
-                    models.Prefetch(
-                        query=models.SparseVector(
-                            indices=sparse_vector.indices,
-                            values=sparse_vector.values,
+        with _tracer.start_as_current_span("vectorstore.search") as span:
+            span.set_attribute("vectorstore.collection", collection)
+            span.set_attribute("vectorstore.top_k", top_k)
+            span.set_attribute("vectorstore.hybrid", sparse_vector is not None)
+            if sparse_vector is not None:
+                # 混合检索：dense + sparse prefetch，RRF 融合
+                result = await self._client.query_points(
+                    collection_name=collection,
+                    prefetch=[
+                        models.Prefetch(query=vector, using="dense", limit=top_k * 2),
+                        models.Prefetch(
+                            query=models.SparseVector(
+                                indices=sparse_vector.indices,
+                                values=sparse_vector.values,
+                            ),
+                            using="sparse",
+                            limit=top_k * 2,
                         ),
-                        using="sparse",
-                        limit=top_k * 2,
-                    ),
-                ],
-                query=models.FusionQuery(fusion=models.Fusion.RRF),
-                limit=top_k,
-            )
-        else:
-            # 仅 dense 检索（向后兼容）
-            result = await self._client.query_points(
-                collection_name=collection,
-                query=vector,
-                using="dense",
-                limit=top_k,
-            )
-        return result.points
+                    ],
+                    query=models.FusionQuery(fusion=models.Fusion.RRF),
+                    limit=top_k,
+                )
+            else:
+                # 仅 dense 检索（向后兼容）
+                result = await self._client.query_points(
+                    collection_name=collection,
+                    query=vector,
+                    using="dense",
+                    limit=top_k,
+                )
+            span.set_attribute("vectorstore.num_results", len(result.points))
+            return result.points
 
     async def count(self, collection: str) -> int:
         info = await self._client.get_collection(collection_name=collection)
