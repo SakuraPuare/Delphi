@@ -123,8 +123,8 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
     # Filter out trivially small chunks (empty or single-char)
     chunks = [c for c in chunks if len(c.text.strip()) > 1]
 
-    # 过滤极小的 AST chunk（1-2 行无语义价值）
-    MIN_CHUNK_LINES = 3
+    # 过滤空行级 chunk；单行函数/方法仍保留（依赖上方 strip 长度过滤去掉纯标点）
+    MIN_CHUNK_LINES = 1
     chunks = [
         c
         for c in chunks
