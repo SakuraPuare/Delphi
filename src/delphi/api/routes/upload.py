@@ -32,7 +32,9 @@ router = APIRouter(prefix="/import/upload", tags=["upload"])
 async def upload_init(body: UploadInitRequest) -> UploadInitResponse:
     logger.info(
         "收到上传初始化请求, file_name={}, file_hash={}, project={}",
-        body.file_name, body.file_hash, body.project,
+        body.file_name,
+        body.file_hash,
+        body.project,
     )
 
     if check_cache(body.project, body.file_hash):

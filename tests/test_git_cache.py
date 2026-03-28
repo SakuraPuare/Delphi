@@ -17,14 +17,10 @@ def _patch_data_dir(tmp_path, monkeypatch):
 class TestCloneOrFetch:
     async def test_first_clone(self):
         """First import should clone the repo."""
-        with patch(
-            "delphi.ingestion.git.clone_repo", new_callable=AsyncMock
-        ) as mock_clone:
+        with patch("delphi.ingestion.git.clone_repo", new_callable=AsyncMock) as mock_clone:
             from delphi.ingestion.git import clone_or_fetch
 
-            result = await clone_or_fetch(
-                "https://github.com/user/repo", "proj", "main", 1
-            )
+            result = await clone_or_fetch("https://github.com/user/repo", "proj", "main", 1)
             mock_clone.assert_called_once()
             assert isinstance(result, Path)
 
@@ -36,18 +32,12 @@ class TestCloneOrFetch:
         (repo_dir / ".git").mkdir(parents=True)
 
         with (
-            patch(
-                "delphi.ingestion.git._git_fetch_reset", new_callable=AsyncMock
-            ) as mock_fetch,
-            patch(
-                "delphi.ingestion.git.clone_repo", new_callable=AsyncMock
-            ) as mock_clone,
+            patch("delphi.ingestion.git._git_fetch_reset", new_callable=AsyncMock) as mock_fetch,
+            patch("delphi.ingestion.git.clone_repo", new_callable=AsyncMock) as mock_clone,
         ):
             from delphi.ingestion.git import clone_or_fetch
 
-            result = await clone_or_fetch(
-                "https://github.com/user/repo", "proj", "main", 1
-            )
+            result = await clone_or_fetch("https://github.com/user/repo", "proj", "main", 1)
             mock_fetch.assert_called_once()
             mock_clone.assert_not_called()
             assert result == repo_dir
@@ -65,15 +55,11 @@ class TestCloneOrFetch:
                 new_callable=AsyncMock,
                 side_effect=Exception("fetch failed"),
             ) as mock_fetch,
-            patch(
-                "delphi.ingestion.git.clone_repo", new_callable=AsyncMock
-            ) as mock_clone,
+            patch("delphi.ingestion.git.clone_repo", new_callable=AsyncMock) as mock_clone,
         ):
             from delphi.ingestion.git import clone_or_fetch
 
-            result = await clone_or_fetch(
-                "https://github.com/user/repo2", "proj", "main", 1
-            )
+            result = await clone_or_fetch("https://github.com/user/repo2", "proj", "main", 1)
             mock_fetch.assert_called_once()
             mock_clone.assert_called_once()
             assert isinstance(result, Path)

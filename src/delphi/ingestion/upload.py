@@ -130,7 +130,9 @@ def load_session(upload_id: str) -> UploadSession | None:
         session = _dict_to_session(data)
         logger.debug(
             "会话加载成功, upload_id={}, received={}/{}",
-            upload_id, len(session.received_chunks), session.total_chunks,
+            upload_id,
+            len(session.received_chunks),
+            session.total_chunks,
         )
         return session
     except Exception:
@@ -227,9 +229,7 @@ def assemble(upload_id: str) -> Path:
             session.file_hash[:12],
             actual_hash[:12],
         )
-        raise HashMismatchError(
-            f"期望哈希 {session.file_hash}，实际哈希 {actual_hash}"
-        )
+        raise HashMismatchError(f"期望哈希 {session.file_hash}，实际哈希 {actual_hash}")
 
     # 移入缓存
     final_path = save_to_cache(

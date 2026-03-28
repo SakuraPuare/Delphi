@@ -164,9 +164,7 @@ async def _git_fetch_reset(repo_dir: Path, branch: str, depth: int = 1) -> None:
     logger.info("仓库缓存已更新, repo={}", repo_dir)
 
 
-async def clone_or_fetch(
-    url: str, project: str, branch: str = "main", depth: int = 1
-) -> Path:
+async def clone_or_fetch(url: str, project: str, branch: str = "main", depth: int = 1) -> Path:
     """Clone repo to cache dir, or fetch+reset if already cached.
 
     On fetch failure, deletes the cached repo and re-clones.
