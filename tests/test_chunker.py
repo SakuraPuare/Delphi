@@ -147,9 +147,8 @@ class TestSymbolExtraction:
     def test_python_method_parent(self):
         code = b"class Foo:\n    def bar(self):\n        pass\n"
         chunks = parse_code(code, "python")
-        # class_definition 包含 method，_extract_nodes 不递归进已提取的节点
-        # 所以只有一个 class chunk，symbol_name = "Foo"
-        assert any(c.metadata.symbol_name == "Foo" for c in chunks)
+        # class 为容器节点：展开子方法，方法的 parent_symbol 为类名
+        assert any(c.metadata.symbol_name == "bar" and c.metadata.parent_symbol == "Foo" for c in chunks)
 
     def test_javascript_function_name(self):
         code = b"function greet(name) {\n  return 'hello ' + name;\n}\n"
@@ -237,7 +236,8 @@ def test_parse_cpp_namespace():
         }
     """).encode()
     chunks = parse_code(source, "cpp")
-    assert any(c.metadata.node_type == "namespace_definition" for c in chunks)
+    # namespace 为容器节点：展开内部函数，不再单独产出 namespace_definition 块
+    assert any(c.metadata.node_type == "function_definition" and c.metadata.symbol_name == "f" for c in chunks)
 
 
 def test_parse_cpp_enum_specifier():
