@@ -1,4 +1,4 @@
-"""OpenAI 兼容 API：让 Open WebUI 等客户端通过 /v1 路由访问 Delphi。"""
+"""OpenAI 兼容 API：让第三方客户端通过 /v1 路由访问 Delphi。"""
 
 from __future__ import annotations
 

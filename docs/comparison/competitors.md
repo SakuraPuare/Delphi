@@ -336,7 +336,7 @@
 |------|----------|
 | Continue.dev | 作为 IDE 插件前端，通过 Delphi API 提供 `@codebase` 上下文 |
 | Tabby | 作为代码补全前端，Delphi 提供仓库级 RAG 上下文增强 |
-| Open WebUI | 作为通用聊天前端，通过 OpenAI 兼容 API 接入 Delphi |
+| OpenAI 兼容客户端 | 通过 OpenAI 兼容 API 接入 Delphi |
 | Ollama | 本地 LLM 推理后端 |
 
 ---
