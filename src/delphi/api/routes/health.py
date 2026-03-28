@@ -17,15 +17,18 @@ async def health() -> HealthResponse:
     return HealthResponse(version=__version__)
 
 
-async def _check_service(url: str, paths: list[str] | None = None) -> ServiceStatus:
+async def _check_service(url: str, paths: list[str] | None = None, api_key: str | None = None) -> ServiceStatus:
     """检查外部服务健康状态，依次尝试多个端点直到成功。"""
     if paths is None:
         paths = ["/health", "/"]
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             for path in paths:
                 try:
-                    resp = await client.get(f"{url}{path}")
+                    resp = await client.get(f"{url}{path}", headers=headers)
                     if resp.status_code < 400:
                         logger.debug("服务健康检查通过, url={}{}", url, path)
                         return ServiceStatus(ok=True, error=None)
@@ -53,7 +56,10 @@ async def status(request: Request) -> StatusResponse:
         logger.warning("Qdrant 健康检查失败: {}", e)
 
     # Check vLLM / OpenAI-compatible / Ollama LLM
-    vllm_status = await _check_service(settings.vllm_url, ["/health", "/v1/models", "/api/tags", "/"])
+    vllm_status = await _check_service(
+        settings.vllm_url, ["/health", "/v1/models", "/api/tags", "/"],
+        api_key=settings.llm_api_key,
+    )
     # Check Embedding (TEI / Ollama / OpenAI-compatible)
     embedding_status = await _check_service(settings.embedding_url, ["/health", "/api/tags", "/"])
 
