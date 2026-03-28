@@ -32,7 +32,7 @@
 ```
 用户 ──→ Web UI / IDE 插件 / API
               │
-         RAG 编排层 (LlamaIndex)
+         RAG 编排层
          ┌────┼────┐
      Query改写  Reranker  Prompt模板
               │
@@ -56,7 +56,7 @@
 
 | 角色 | 默认模型 | 说明 |
 |------|---------|------|
-| LLM | Qwen2.5-Coder-32B-Instruct | Q4 量化，单卡 24GB 可跑，128K 上下文 |
+| LLM | Qwen3.5-27B | 单卡 24GB 可跑，128K 上下文 |
 | Embedding | BGE-M3 | 1024 维，Dense + Sparse 双输出，中英文混合 |
 | Reranker | BGE-Reranker-v2-M3 | 交叉编码器，~560M 参数，CPU 可跑 |
 | 音视频转录 | Faster-Whisper large-v3 | INT8 量化，离线转录 |
@@ -69,7 +69,6 @@
 |------|------|------|
 | 向量数据库 | Qdrant | 单二进制部署，百万级数据 P95 < 30ms |
 | 推理引擎 | vLLM（生产）/ Ollama（开发） | PagedAttention 高并发 |
-| RAG 框架 | LlamaIndex | RAG 场景抽象贴合 |
 | 代码解析 | Tree-sitter | 增量 AST 解析，多语言支持 |
 | 容器编排 | Docker Compose | 一键启动全部服务 |
 
@@ -167,4 +166,4 @@ Delphi 本身不负责训练，但提供完整的微调工作流支持：
 - [x] 自定义模型导入
 - [x] Agentic RAG（多步推理）
 - [x] IDE 插件
-- [x] 代码关系图谱（clangd + 图存储）
+- [x] 代码关系图谱（Tree-sitter AST + 图存储）
