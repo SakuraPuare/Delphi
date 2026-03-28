@@ -57,7 +57,8 @@ async def status(request: Request) -> StatusResponse:
 
     # Check vLLM / OpenAI-compatible / Ollama LLM
     vllm_status = await _check_service(
-        settings.vllm_url, ["/health", "/v1/models", "/api/tags", "/"],
+        settings.vllm_url,
+        ["/health", "/v1/models", "/api/tags", "/"],
         api_key=settings.llm_api_key,
     )
     # Check Embedding (TEI / Ollama / OpenAI-compatible)

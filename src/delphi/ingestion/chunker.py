@@ -128,8 +128,7 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
     chunks = [
         c
         for c in chunks
-        if c.metadata.node_type == "fallback"
-        or (c.metadata.end_line - c.metadata.start_line + 1) >= MIN_CHUNK_LINES
+        if c.metadata.node_type == "fallback" or (c.metadata.end_line - c.metadata.start_line + 1) >= MIN_CHUNK_LINES
     ]
 
     logger.debug("Tree-sitter 解析完成, language={}, 块数={}", language, len(chunks))

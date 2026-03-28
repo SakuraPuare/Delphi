@@ -67,7 +67,10 @@ class RerankerClient:
         """调用 reranker，返回 [(original_index, score), ...] 按 score 降序"""
         logger.debug(
             "Rerank 请求开始, backend={}, query_len={}, texts_count={}, top_k={}",
-            self.backend, len(query), len(texts), top_k,
+            self.backend,
+            len(query),
+            len(texts),
+            top_k,
         )
         if self.backend == "tei":
             results = await self._rerank_tei(query, texts)
@@ -117,10 +120,7 @@ class RerankerClient:
         data = resp.json()
         # Jina/SiliconFlow: {"results": [{"index": 0, "relevance_score": 0.95}]}
         results = data.get("results", data.get("data", []))
-        return [
-            {"index": r["index"], "score": r.get("relevance_score", r.get("score", 0.0))}
-            for r in results
-        ]
+        return [{"index": r["index"], "score": r.get("relevance_score", r.get("score", 0.0))} for r in results]
 
     async def close(self):
         await self._client.aclose()
