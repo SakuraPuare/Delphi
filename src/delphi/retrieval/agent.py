@@ -44,7 +44,9 @@ Answer: 你的最终回答
 - search 的参数是搜索查询字符串
 - lookup 的参数是 file_path, start_line, end_line（行号为整数）
 - 仔细分析每次工具返回的结果，决定是否需要进一步检索
-- 回答时引用具体的文件路径和行号"""
+- 回答时引用具体的文件路径和行号
+
+重要：你必须至少调用一次 search 工具获取相关信息后，才能给出 Answer。不允许在没有任何工具调用的情况下直接回答。"""
 
 FORCE_FINAL_ANSWER_PROMPT = "你已经进行了多步检索，请根据已收集到的所有信息，直接给出最终答案。不要再调用工具。"
 
@@ -356,15 +358,25 @@ async def run_agent(
 
         # 如果 LLM 给出了最终答案
         if step.answer:
-            steps.append(step)
-            logger.info("Agent 推理完成, 在第 {} 步获得最终答案, 答案长度={}", step_num + 1, len(step.answer))
-            return step.answer, steps
+            if step_num == 0:
+                # 首轮未调用工具就给出答案，强制执行一次搜索
+                logger.warning("Agent 首轮跳过工具调用，强制执行 search")
+                step.answer = None
+                step.action = f"search({question})"
+            else:
+                steps.append(step)
+                logger.info("Agent 推理完成, 在第 {} 步获得最终答案, 答案长度={}", step_num + 1, len(step.answer))
+                return step.answer, steps
 
         # 如果没有 action，把 thought 当作最终答案
         if not step.action:
-            steps.append(step)
-            logger.info("Agent 推理完成, 第 {} 步无 action, 以 thought 作为答案", step_num + 1)
-            return step.thought, steps
+            if step_num == 0:
+                logger.warning("Agent 首轮无 action，强制执行 search")
+                step.action = f"search({question})"
+            else:
+                steps.append(step)
+                logger.info("Agent 推理完成, 第 {} 步无 action, 以 thought 作为答案", step_num + 1)
+                return step.thought, steps
 
         # 执行工具
         logger.debug("Agent 第 {} 步执行工具: {}", step_num + 1, step.action[:80])
