@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-import logging
+import time
 
+from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
@@ -12,16 +13,14 @@ from delphi.api.models import AgentQueryRequest, AgentQueryResponse, AgentStepMo
 from delphi.core.config import settings
 from delphi.retrieval.agent import (
     AgentStep,
-    _build_agent_messages,
-    _exec_lookup,
-    _exec_search,
-    _parse_action,
-    _parse_llm_output,
+    build_agent_messages,
+    build_force_final_messages,
+    exec_tool,
+    parse_action,
+    parse_llm_output,
     run_agent,
 )
 from delphi.retrieval.rag import generate, generate_sync
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -71,12 +70,17 @@ def _collect_sources(steps: list[AgentStep]) -> list[Source]:
 @router.post("/query", response_model=AgentQueryResponse)
 async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryResponse:
     """非流式 agent 查询：多步推理后返回完整结果。"""
+    logger.info("收到 Agent 查询请求, project={}, question={}, max_steps={}", body.project, body.question[:80], body.max_steps)
+    t_start = time.monotonic()
+
     if not body.question.strip():
+        logger.warning("Agent 查询请求被拒绝: question 为空")
         raise HTTPException(400, detail="question 不能为空")
 
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
+    graph_store = request.app.state.graph_store
     sessions = request.app.state.sessions
 
     # Session 管理
@@ -84,8 +88,10 @@ async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryRe
     history = None
     if body.session_id:
         session = sessions.get(body.session_id)
+        logger.debug("加载已有 Agent 会话, session_id={}, found={}", body.session_id, session is not None)
     if session is None and body.session_id is None:
         session = sessions.create(body.project)
+        logger.debug("创建新 Agent 会话, session_id={}", session.session_id)
 
     if session:
         history = session.get_history()
@@ -101,12 +107,17 @@ async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryRe
         reranker=reranker,
         max_steps=body.max_steps,
         history=history,
+        graph_store=graph_store,
     )
+    logger.debug("Agent 推理完成, 步骤数={}", len(steps))
 
     if session:
         session.add_assistant_message(answer)
 
     sources = _collect_sources(steps)
+
+    elapsed_ms = round((time.monotonic() - t_start) * 1000, 2)
+    logger.info("Agent 查询完成, project={}, 耗时={}ms, 步骤数={}, 来源数={}", body.project, elapsed_ms, len(steps), len(sources))
 
     return AgentQueryResponse(
         answer=answer,
@@ -119,12 +130,16 @@ async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryRe
 @router.post("/query/stream")
 async def agent_query_stream(body: AgentQueryRequest, request: Request):
     """流式 agent 查询：通过 SSE 实时推送推理过程和最终答案。"""
+    logger.info("收到 Agent 流式查询请求, project={}, question={}, max_steps={}", body.project, body.question[:80], body.max_steps)
+
     if not body.question.strip():
+        logger.warning("Agent 流式查询请求被拒绝: question 为空")
         raise HTTPException(400, detail="question 不能为空")
 
     embedding_client = request.app.state.embedding
     vector_store = request.app.state.vector_store
     reranker = request.app.state.reranker
+    graph_store = request.app.state.graph_store
     sessions = request.app.state.sessions
 
     # Session 管理
@@ -146,85 +161,68 @@ async def agent_query_stream(body: AgentQueryRequest, request: Request):
         max_steps = body.max_steps
 
         for step_num in range(max_steps):
-            messages = _build_agent_messages(body.question, steps, history)
+            logger.debug("Agent 流式推理第 {} 步开始", step_num + 1)
+            messages = build_agent_messages(body.question, steps, history)
 
             try:
                 llm_output = await generate_sync(messages, settings.vllm_url, settings.llm_model)
             except Exception:
-                logger.exception("Agent LLM call failed at step %d", step_num)
+                logger.exception("Agent LLM 调用失败, step={}", step_num)
                 break
 
-            step = _parse_llm_output(llm_output)
+            step = parse_llm_output(llm_output)
 
             # 发送 thought
             if step.thought:
+                logger.debug("Agent step {} thought: {}", step_num + 1, step.thought[:100])
                 yield _sse({"type": "thought", "content": step.thought})
 
             # 如果有最终答案，流式输出
             if step.answer:
+                logger.debug("Agent step {} 产生最终答案", step_num + 1)
                 steps.append(step)
-                # 流式输出最终答案的每个 token
                 for char in step.answer:
                     yield _sse({"type": "token", "content": char})
                 break
 
             # 如果没有 action，把 thought 当答案
             if not step.action:
+                logger.debug("Agent step {} 无 action, 将 thought 作为答案", step_num + 1)
                 steps.append(step)
                 for char in step.thought:
                     yield _sse({"type": "token", "content": char})
                 break
 
             # 发送 action 事件
-            tool_name, args = _parse_action(step.action)
+            tool_name, _args = parse_action(step.action)
+            logger.debug("Agent step {} 执行工具: {}", step_num + 1, tool_name)
             yield _sse({"type": "action", "tool": tool_name, "args": step.action})
 
-            # 执行工具
-            try:
-                if tool_name == "search" and args:
-                    observation = await _exec_search(
-                        query=args[0],
-                        project=body.project,
-                        embedding_client=embedding_client,
-                        vector_store=vector_store,
-                        reranker=reranker,
-                    )
-                elif tool_name == "lookup" and len(args) == 3:
-                    observation = await _exec_lookup(
-                        file_path=args[0],
-                        start_line=int(args[1]),
-                        end_line=int(args[2]),
-                        project=body.project,
-                        embedding_client=embedding_client,
-                        vector_store=vector_store,
-                    )
-                else:
-                    observation = f"未知工具或参数错误: {step.action}"
-            except Exception as exc:
-                logger.warning("Tool execution failed: %s", exc, exc_info=True)
-                observation = f"工具执行出错: {exc}"
-
-            # 截断
-            max_obs_len = 4000
-            if len(observation) > max_obs_len:
-                observation = observation[:max_obs_len] + "\n...(结果已截断)"
-
+            # 执行工具（复用核心逻辑）
+            observation = await exec_tool(
+                step, body.project, embedding_client, vector_store, reranker,
+                graph_store=graph_store,
+            )
             step.observation = observation
             steps.append(step)
 
             yield _sse({"type": "observation", "content": observation})
         else:
-            # 超过 max_steps，强制生成最终答案
-            messages = _build_agent_messages(body.question, steps, history)
-            messages.append(
-                {
-                    "role": "user",
-                    "content": "你已经进行了多步检索，请根据已收集到的所有信息，直接给出最终答案。不要再调用工具。",
-                }
-            )
+            # 超过 max_steps，流式生成最终答案
+            logger.warning("Agent 达到最大步数 {}, 强制生成最终答案", max_steps)
+            messages = build_force_final_messages(body.question, steps, history)
             yield _sse({"type": "thought", "content": "已达到最大步数，正在综合已有信息生成答案..."})
+            forced_answer_parts: list[str] = []
             async for token in generate(messages, settings.vllm_url, settings.llm_model):
+                forced_answer_parts.append(token)
                 yield _sse({"type": "token", "content": token})
+            # 将强制生成的答案存入最后一个 step，以便后续保存到 session
+            forced_answer = "".join(forced_answer_parts)
+            if steps:
+                steps[-1].answer = forced_answer
+            else:
+                forced_step = AgentStep(thought="已达到最大步数", answer=forced_answer)
+                steps.append(forced_step)
 
         # 记录到 session
         if session:
@@ -248,6 +246,7 @@ async def agent_query_stream(body: AgentQueryRequest, request: Request):
                 }
             )
 
+        logger.info("Agent 流式查询完成, 步骤数={}, 来源数={}", len(steps), len(sources))
         yield _sse({"type": "done", "session_id": session_id})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

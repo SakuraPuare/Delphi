@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from typing import Any
 
+from loguru import logger
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from delphi.core.config import settings
 from delphi.retrieval.rag import build_prompt, generate, generate_sync, retrieve
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["openai-compat"])
 
@@ -71,6 +69,7 @@ def _build_plain_messages(messages: list[ChatMessage]) -> list[dict[str, str]]:
 
 @router.get("/models")
 async def list_models(request: Request) -> dict[str, Any]:
+    logger.debug("收到 OpenAI 兼容模型列表请求")
     mgr = request.app.state.model_manager
     registered = mgr.list_models()
 
@@ -92,6 +91,7 @@ async def list_models(request: Request) -> dict[str, Any]:
             }
         )
 
+    logger.debug("返回 OpenAI 兼容模型列表, 模型数={}", len(data))
     return {"object": "list", "data": data}
 
 
@@ -102,7 +102,9 @@ async def list_models(request: Request) -> dict[str, Any]:
 
 @router.post("/chat/completions")
 async def chat_completions(body: ChatCompletionRequest, request: Request):
+    logger.info("收到 OpenAI 兼容聊天请求, model={}, stream={}, messages_count={}", body.model, body.stream, len(body.messages))
     question = _extract_question(body.messages)
+    logger.debug("提取用户问题: {}", question[:80] if question else "(空)")
 
     # 从 app.state 获取 RAG 依赖
     embedding_client = request.app.state.embedding
@@ -121,8 +123,9 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
                 vector_store=vector_store,
                 reranker=reranker,
             )
+            logger.debug("OpenAI 兼容 RAG 检索完成, 返回 {} 个结果", len(chunks))
         except Exception:
-            logger.warning("RAG 检索失败，回退到直接对话", exc_info=True)
+            logger.warning("RAG 检索失败, 回退到直接对话", exc_info=True)
 
     # 构建 prompt：有检索结果用 RAG prompt，否则直接转发用户消息
     prompt_messages = build_prompt(question, chunks) if chunks else _build_plain_messages(body.messages)
@@ -130,13 +133,16 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
     completion_id = _make_id()
 
     if body.stream:
+        logger.debug("开始流式响应, completion_id={}", completion_id)
         return StreamingResponse(
             _stream_response(completion_id, prompt_messages),
             media_type="text/event-stream",
         )
 
     # 非流式
+    logger.debug("开始非流式响应, completion_id={}", completion_id)
     answer = await generate_sync(prompt_messages, settings.vllm_url, settings.llm_model)
+    logger.info("OpenAI 兼容聊天完成, completion_id={}, answer_len={}", completion_id, len(answer))
     return {
         "id": completion_id,
         "object": "chat.completion",
@@ -155,6 +161,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request):
 
 async def _stream_response(completion_id: str, messages: list[dict]):
     """生成 SSE 流式响应，格式与 OpenAI API 一致。"""
+    logger.debug("开始 OpenAI 兼容流式生成, completion_id={}", completion_id)
 
     def _chunk(content: str | None, finish_reason: str | None = None) -> str:
         delta: dict[str, str] = {}

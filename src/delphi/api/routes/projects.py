@@ -1,5 +1,6 @@
 from collections import Counter
 
+from loguru import logger
 from fastapi import APIRouter, Request
 
 from delphi.api.models import ChunkDetail, ChunkListResponse, ProjectCreate, ProjectInfo, ProjectStats
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 @router.get("", response_model=list[ProjectInfo])
 async def list_projects(request: Request) -> list[ProjectInfo]:
+    logger.info("收到列出项目请求")
     vs = request.app.state.vector_store
     try:
         collections = await vs._client.get_collections()
@@ -16,24 +18,32 @@ async def list_projects(request: Request) -> list[ProjectInfo]:
         for c in collections.collections:
             count = await vs.count(c.name)
             result.append(ProjectInfo(name=c.name, chunk_count=count))
+        logger.debug("返回项目列表, 项目数={}", len(result))
         return result
-    except Exception:
+    except Exception as e:
         # Qdrant not available, return empty
+        logger.warning("获取项目列表失败 (Qdrant 不可用): {}", e)
         return []
 
 
 @router.post("", response_model=ProjectInfo, status_code=201)
 async def create_project(body: ProjectCreate, request: Request) -> ProjectInfo:
+    logger.info("收到创建项目请求, name={}, description={}", body.name, body.description[:50] if body.description else "")
     vs = request.app.state.vector_store
     await vs.ensure_collection(body.name)
+    logger.info("项目创建成功, name={}", body.name)
     return ProjectInfo(name=body.name, description=body.description)
 
 
 @router.delete("/{name}", status_code=204)
 async def delete_project(name: str, request: Request) -> None:
+    logger.info("收到删除项目请求, name={}", name)
     vs = request.app.state.vector_store
     if await vs.collection_exists(name):
         await vs.delete_collection(name)
+        logger.info("项目已删除, name={}", name)
+    else:
+        logger.debug("项目不存在, 跳过删除, name={}", name)
 
 
 @router.get("/{name}/chunks", response_model=ChunkListResponse)
@@ -46,6 +56,8 @@ async def list_chunks(
     node_type: str | None = None,
     file_path: str | None = None,
 ) -> ChunkListResponse:
+    logger.debug("收到列出 chunks 请求, project={}, limit={}, offset={}, language={}, node_type={}, file_path={}",
+                  name, limit, offset, language, node_type, file_path)
     vs = request.app.state.vector_store
     filters: dict[str, str] = {}
     if language:
@@ -75,11 +87,13 @@ async def list_chunks(
             )
         )
 
+    logger.debug("返回 chunks, project={}, 返回数={}, 总数={}", name, len(chunks), total)
     return ChunkListResponse(chunks=chunks, next_offset=str(next_off) if next_off else None, total=total)
 
 
 @router.get("/{name}/stats", response_model=ProjectStats)
 async def project_stats(name: str, request: Request) -> ProjectStats:
+    logger.info("收到项目统计请求, project={}", name)
     vs = request.app.state.vector_store
     total = await vs.count(name)
 
@@ -89,8 +103,10 @@ async def project_stats(name: str, request: Request) -> ProjectStats:
     file_counter: Counter[str] = Counter()
 
     offset = None
+    batch_count = 0
     while True:
         records, offset = await vs.scroll(name, limit=100, offset=offset)
+        batch_count += 1
         for r in records:
             p = r.payload or {}
             lang_counter[p.get("language", "unknown")] += 1
@@ -100,6 +116,8 @@ async def project_stats(name: str, request: Request) -> ProjectStats:
             break
 
     top_files = [{"file_path": f, "count": c} for f, c in file_counter.most_common(20)]
+    logger.info("项目统计完成, project={}, total_chunks={}, 语言种类={}, 节点类型数={}, 滚动批次={}",
+                 name, total, len(lang_counter), len(type_counter), batch_count)
 
     return ProjectStats(
         total_chunks=total,

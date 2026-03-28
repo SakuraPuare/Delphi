@@ -89,6 +89,7 @@ class Source(BaseModel):
     score: float = 0.0
     start_line: int | None = None
     end_line: int | None = None
+    repo_url: str = ""
 
 
 class QueryResponse(BaseModel):
