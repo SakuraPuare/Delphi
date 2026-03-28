@@ -76,6 +76,16 @@ _CHUNK_NODE_TYPES: set[str] = {
     "type_declaration",  # Go type/struct
 }
 
+# 容器节点：包含子方法/函数的类/结构体等，需要递归提取子节点
+_CONTAINER_NODE_TYPES: set[str] = {
+    "class_definition",  # Python
+    "class_declaration",  # JS/TS/Java
+    "class_specifier",  # C++ class
+    "struct_specifier",  # C/C++ struct
+    "impl_item",  # Rust
+    "namespace_definition",  # C++ namespace
+}
+
 _NAME_NODE_TYPES: set[str] = {
     "identifier",
     "name",
@@ -85,7 +95,7 @@ _NAME_NODE_TYPES: set[str] = {
 
 MAX_CHUNK_LINES = 100
 FALLBACK_WINDOW = 50
-FALLBACK_OVERLAP = 10
+FALLBACK_OVERLAP = 5
 
 
 def detect_language(path: Path) -> str | None:
@@ -112,6 +122,15 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
 
     # Filter out trivially small chunks (empty or single-char)
     chunks = [c for c in chunks if len(c.text.strip()) > 1]
+
+    # 过滤极小的 AST chunk（1-2 行无语义价值）
+    MIN_CHUNK_LINES = 3
+    chunks = [
+        c
+        for c in chunks
+        if c.metadata.node_type == "fallback"
+        or (c.metadata.end_line - c.metadata.start_line + 1) >= MIN_CHUNK_LINES
+    ]
 
     logger.debug("Tree-sitter 解析完成, language={}, 块数={}", language, len(chunks))
     return chunks
@@ -255,6 +274,17 @@ def _fallback_split(node: Node, source: bytes, symbol: str, parent: str) -> list
 def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
     """Recursively extract chunk-worthy nodes."""
     if node.type in _CHUNK_NODE_TYPES:
+        # 容器节点（类/结构体等）：递归提取子方法，使 parent_symbol 正确设置
+        if node.type in _CONTAINER_NODE_TYPES:
+            child_chunks: list[Chunk] = []
+            for child in node.children:
+                _extract_nodes(child, source, child_chunks)
+            if child_chunks:
+                # 子节点已提取，直接使用（parent_symbol 由 _get_parent_symbol 自动解析）
+                chunks.extend(child_chunks)
+                return
+
+        # 非容器节点或容器内无可提取子节点：作为整体 chunk
         text = source[node.start_byte : node.end_byte].decode(errors="replace")
         lines = text.count("\n") + 1
 
