@@ -42,7 +42,7 @@
 ### 请求
 
 ```http
-POST /api/v1/query
+POST /query
 Content-Type: application/json
 
 {
@@ -168,7 +168,7 @@ data: {"type": "done"}
 
 ## 流式输出（SSE）规格
 
-- 端点：`POST /api/v1/query`，请求头需包含 `Accept: text/event-stream`
+- 端点：`POST /query`，请求头需包含 `Accept: text/event-stream`
 - 每条 SSE 消息格式：`data: <JSON>\n\n`
 - 消息类型：
   - `token`：LLM 生成的文本片段，`content` 字段为字符串

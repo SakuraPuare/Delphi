@@ -47,7 +47,7 @@ delphi import media /path/to/videos/
 也可以通过 API 调用：
 
 ```bash
-curl -X POST http://localhost:8000/api/chat \
+curl -X POST http://localhost:8888/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "CyberRT 的组件注册机制是怎样的？"}'
+  -d '{"question": "CyberRT 的组件注册机制是怎样的？", "project": "apollo"}'
 ```

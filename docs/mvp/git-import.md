@@ -46,7 +46,7 @@
 ### 请求
 
 ```http
-POST /api/v1/import/git
+POST /import/git
 Content-Type: application/json
 
 {
@@ -70,7 +70,7 @@ Content-Type: application/json
 ### 任务状态查询
 
 ```http
-GET /api/v1/tasks/{task_id}
+GET /import/tasks/{task_id}
 ```
 
 ```json

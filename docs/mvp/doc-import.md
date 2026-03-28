@@ -44,7 +44,7 @@
 ### 请求
 
 ```http
-POST /api/v1/import/docs
+POST /import/docs
 Content-Type: application/json
 
 {
@@ -67,7 +67,7 @@ Content-Type: application/json
 ### 任务状态查询
 
 ```http
-GET /api/v1/tasks/{task_id}
+GET /import/tasks/{task_id}
 ```
 
 ```json
@@ -91,10 +91,10 @@ GET /api/v1/tasks/{task_id}
 
 | 格式 | 解析库 | 切分策略 |
 |------|--------|---------|
-| Markdown | `markdown-it` / 原生解析 | 按标题层级切分（见下节） |
+| Markdown | 内置解析 | 按标题层级切分（见下节） |
 | TXT | 内置 | 按空行分段，超长段落滑动窗口 |
-| HTML | `html2text` | 转 Markdown 后按标题切分 |
-| PDF | `pdfminer.six` | 按页提取，超长页滑动窗口 |
+| HTML | `trafilatura` | 提取正文后按段落切分 |
+| PDF | `PyMuPDF` | 按页提取，超长页滑动窗口 |
 
 ---
 
@@ -124,20 +124,19 @@ GET /api/v1/tasks/{task_id}
 
 ---
 
-## HTML → Markdown 转换策略
+## HTML 正文提取策略
 
-使用 `html2text` 库，配置如下：
+使用 `trafilatura` 库提取 HTML 正文：
 
-- 保留超链接（`body_width=0` 禁止自动换行）
-- 忽略图片（`ignore_images=True`）
-- 忽略导航栏、页眉、页脚（通过 CSS 选择器预处理，移除 `<nav>`、`<header>`、`<footer>`）
-- 转换后的 Markdown 进入标准 Markdown 切分流程
+- 自动识别并提取页面主体内容，过滤导航栏、页眉、页脚、广告等噪声
+- 输出纯文本，按段落切分
+- 保留超链接文本
 
 ---
 
 ## PDF 文本提取策略
 
-使用 `pdfminer.six` 提取文本：
+使用 `PyMuPDF`（fitz）提取文本：
 
 1. 按页提取，每页作为独立文本块
 2. 检测并合并跨页的段落（通过行尾连字符或段落缩进判断）
