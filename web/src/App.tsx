@@ -1,53 +1,43 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useStore } from "@/store";
-import Sidebar from "@/components/Sidebar";
-import Header from "@/components/Header";
-import ChatPanel from "@/components/ChatPanel";
-import InputBar from "@/components/InputBar";
+import { Routes, Route } from "react-router";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { DashboardPage } from "@/pages/dashboard/DashboardPage";
+import { ProjectListPage } from "@/pages/projects/ProjectListPage";
+import { ProjectNewPage } from "@/pages/projects/ProjectNewPage";
+import { ProjectLayout } from "@/pages/projects/ProjectLayout";
+import { OverviewTab } from "@/pages/projects/OverviewTab";
+import { ImportTab } from "@/pages/projects/ImportTab";
+import { GraphTab } from "@/pages/projects/GraphTab";
+import { FinetuneTab } from "@/pages/projects/FinetuneTab";
+import { PipelineTab } from "@/pages/projects/PipelineTab";
+import { ProjectSettingsTab } from "@/pages/projects/ProjectSettingsTab";
+import { ChatPage } from "@/pages/chat/ChatPage";
+import { SchedulerPage } from "@/pages/scheduler/SchedulerPage";
+import { ModelsPage } from "@/pages/models/ModelsPage";
+import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 export default function App() {
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
-
   return (
-    <div className="flex h-dvh overflow-hidden bg-dark-bg">
-      {/* Desktop sidebar -- Sidebar manages its own width animation */}
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
-
-      {/* Mobile sidebar overlay */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div
-              key="overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black md:hidden"
-              onClick={toggleSidebar}
-            />
-            <motion.div
-              key="mobile-sidebar"
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed inset-y-0 left-0 z-50 w-[280px] md:hidden"
-            >
-              <Sidebar />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Main area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Header />
-        <ChatPanel />
-        <InputBar />
-      </div>
-    </div>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="projects" element={<ProjectListPage />} />
+        <Route path="projects/new" element={<ProjectNewPage />} />
+        <Route path="projects/:name" element={<ProjectLayout />}>
+          <Route index element={<OverviewTab />} />
+          <Route path="overview" element={<OverviewTab />} />
+          <Route path="import" element={<ImportTab />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="pipeline" element={<PipelineTab />} />
+          <Route path="graph" element={<GraphTab />} />
+          <Route path="finetune" element={<FinetuneTab />} />
+          <Route path="settings" element={<ProjectSettingsTab />} />
+        </Route>
+        <Route path="chat" element={<ChatPage />} />
+        <Route path="chat/:conversationId" element={<ChatPage />} />
+        <Route path="scheduler" element={<SchedulerPage />} />
+        <Route path="models" element={<ModelsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
   );
 }
