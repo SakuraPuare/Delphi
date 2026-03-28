@@ -1,0 +1,163 @@
+# docker-compose.local.yml — 全部服务本地运行
+#
+# 适用场景：有 NVIDIA GPU（>=16GB VRAM），所有模型本地推理。
+#
+# 用法：
+#   docker compose -f docker-compose.local.yml up -d
+#
+# 默认模型：
+#   LLM:       Qwen/Qwen3.5-27B（需要 ~20GB VRAM）
+#   Embedding: BAAI/bge-m3
+#   Reranker:  BAAI/bge-reranker-v2-m3
+#
+# 可通过 .env 覆盖模型和参数。
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:latest
+    ports:
+      - "8080:80"
+    environment:
+      - MODEL_ID=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - MAX_BATCH_TOKENS=16384
+    volumes:
+      - ~/.cache/huggingface:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:latest
+    ports:
+      - "8082:80"
+    environment:
+      - MODEL_ID=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+    volumes:
+      - ~/.cache/huggingface:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
+      - MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
+      - TENSOR_PARALLEL_SIZE=${VLLM_TENSOR_PARALLEL_SIZE:-1}
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --model ${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  api:
+    build: .
+    ports:
+      - "8888:8888"
+    volumes:
+      - /home/kent:/mnt/host:ro
+    environment:
+      - DELPHI_VLLM_URL=http://vllm:8000
+      - DELPHI_QDRANT_URL=http://qdrant:6333
+      - DELPHI_EMBEDDING_URL=http://embedding:80
+      - DELPHI_EMBEDDING_BACKEND=tei
+      - DELPHI_LLM_API_KEY=${DELPHI_LLM_API_KEY:-}
+      - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - DELPHI_RERANKER_URL=http://reranker:80
+      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - DELPHI_API_KEY=${DELPHI_API_KEY:-}
+      - DELPHI_OTEL_ENABLED=${DELPHI_OTEL_ENABLED:-false}
+      - DELPHI_OTEL_ENDPOINT=${DELPHI_OTEL_ENDPOINT:-http://jaeger:4317}
+      - DELPHI_OTEL_SERVICE_NAME=${DELPHI_OTEL_SERVICE_NAME:-delphi}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./web
+    ports:
+      - "3001:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # --- 可选：OpenTelemetry 追踪后端 ---
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: ["otel"]
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
+volumes:
+  qdrant_data:
+
+networks:
+  default:
+    name: delphi_net
