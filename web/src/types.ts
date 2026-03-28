@@ -29,6 +29,7 @@ export interface Source {
   score: number;
   start_line?: number;
   end_line?: number;
+  repo_url?: string;
 }
 
 export interface TaskInfo {
