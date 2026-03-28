@@ -1,6 +1,5 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import App from "@/App";
@@ -19,20 +18,18 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-        <Toaster
-          position="bottom-right"
-          theme="dark"
-          toastOptions={{
-            style: {
-              background: "#1a1a28",
-              border: "1px solid #2a2a3e",
-              color: "#e4e4ef",
-            },
-          }}
-        />
-      </BrowserRouter>
+      <App />
+      <Toaster
+        position="bottom-right"
+        theme="dark"
+        toastOptions={{
+          style: {
+            background: "#1a1a28",
+            border: "1px solid #2a2a3e",
+            color: "#e4e4ef",
+          },
+        }}
+      />
     </QueryClientProvider>
   </StrictMode>,
 );

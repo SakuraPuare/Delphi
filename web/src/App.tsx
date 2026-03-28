@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { ProjectListPage } from "@/pages/projects/ProjectListPage";
@@ -15,29 +15,36 @@ import { SchedulerPage } from "@/pages/scheduler/SchedulerPage";
 import { ModelsPage } from "@/pages/models/ModelsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
+const router = createBrowserRouter([
+  {
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <DashboardPage /> },
+      { path: "projects", element: <ProjectListPage /> },
+      { path: "projects/new", element: <ProjectNewPage /> },
+      {
+        path: "projects/:name",
+        element: <ProjectLayout />,
+        children: [
+          { index: true, element: <OverviewTab /> },
+          { path: "overview", element: <OverviewTab /> },
+          { path: "import", element: <ImportTab /> },
+          { path: "chat", element: <ChatPage /> },
+          { path: "pipeline", element: <PipelineTab /> },
+          { path: "graph", element: <GraphTab /> },
+          { path: "finetune", element: <FinetuneTab /> },
+          { path: "settings", element: <ProjectSettingsTab /> },
+        ],
+      },
+      { path: "chat", element: <ChatPage /> },
+      { path: "chat/:conversationId", element: <ChatPage /> },
+      { path: "scheduler", element: <SchedulerPage /> },
+      { path: "models", element: <ModelsPage /> },
+      { path: "settings", element: <SettingsPage /> },
+    ],
+  },
+]);
+
 export default function App() {
-  return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="projects" element={<ProjectListPage />} />
-        <Route path="projects/new" element={<ProjectNewPage />} />
-        <Route path="projects/:name" element={<ProjectLayout />}>
-          <Route index element={<OverviewTab />} />
-          <Route path="overview" element={<OverviewTab />} />
-          <Route path="import" element={<ImportTab />} />
-          <Route path="chat" element={<ChatPage />} />
-          <Route path="pipeline" element={<PipelineTab />} />
-          <Route path="graph" element={<GraphTab />} />
-          <Route path="finetune" element={<FinetuneTab />} />
-          <Route path="settings" element={<ProjectSettingsTab />} />
-        </Route>
-        <Route path="chat" element={<ChatPage />} />
-        <Route path="chat/:conversationId" element={<ChatPage />} />
-        <Route path="scheduler" element={<SchedulerPage />} />
-        <Route path="models" element={<ModelsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-      </Route>
-    </Routes>
-  );
+  return <RouterProvider router={router} />;
 }
