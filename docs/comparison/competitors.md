@@ -118,6 +118,84 @@
 
 ---
 
+### PandaWiki（长亭科技）
+
+- **简介**：AI 大模型驱动的开源知识库搭建系统，定位为快速构建产品文档、技术文档、FAQ、博客系统，提供 AI 创作、AI 问答、AI 搜索能力。AGPL-3.0 许可证，另有闭源 Pro 版。
+- **GitHub Stars**：~5k（2026 年初）
+- **GitHub 仓库**：`timhuang2003/AINEWPROJECT`（fork / 镜像）
+- **技术栈**：Go 1.24（后端，Echo v4 + GORM + Wire DI）、React 18 + Vite（管理后台）、Next.js 15 App Router（Wiki 前台）、PostgreSQL、Redis、NATS（消息队列）、MinIO（对象存储）、Caddy（反向代理）、pnpm monorepo
+- **核心特性**：
+  - AI 辅助创作 / 问答 / 搜索，基于 CloudWego Eino RAG SDK + ModelKit
+  - ProseMirror 富文本编辑器，兼容 Markdown 和 HTML，支持导出 Word / PDF / Markdown
+  - AI FIM（Fill-in-the-Middle）Tab 补全 + AI 文本润色 / 改写
+  - Yjs 实时协同编辑（多人同时编辑同一文档）
+  - 多来源内容导入：URL 抓取、Sitemap、RSS 订阅、Notion、飞书文档、Confluence、Epub、语雀、思源笔记、Mindoc、WikiJS、文件上传（独立 `panda-wiki-crawler` 微服务处理）
+  - 第三方集成：网页挂件、钉钉 / 飞书 / 企业微信 / Discord 聊天机器人、微信公众号、企微客服
+  - 多知识库隔离，每个知识库独立生成 Wiki 站点
+  - OpenAI 兼容 API 输出（可作为任意 OpenAI SDK 客户端的 RAG 后端）
+  - 细粒度节点权限：可见性 / 可访问性 / 可被 AI 回答 三维独立控制
+  - 内容保护：复制限制（追加水印文本或禁用复制）、可见 / 隐形水印
+  - 发布版本管理（类 Git tag 的版本标签机制）
+  - 对话历史记录 + 内联引用溯源
+  - 统计分析面板（1 / 7 / 30 / 90 天窗口，含 Geo-IP + UA 解析）
+  - 认证：密码 / LDAP / OAuth2 / GitHub / CAS / 钉钉 / 飞书 / 企微 SSO
+  - 可观测性：OpenTelemetry 分布式追踪 + Sentry 错误监控
+  - 专业版额外支持多用户权限、组织管理、API Token
+- **离线部署**：支持（Docker 一键安装脚本，多架构 amd64 + arm64），但 AI 模型需外部配置（推荐百智云或自建，DeepSeek 扩展集成）
+- **代码支持**：弱，无 AST 感知，代码文件按文本处理，无 Git 仓库导入
+- **优点**：
+  - 产品化程度高，管理后台 + Wiki 前台双端完整，主题系统完善（12+ 预设主题）
+  - 第三方 IM 集成最丰富（钉钉、飞书、企微、Discord、微信公众号、企微客服）
+  - 内容导入源覆盖广（URL / Sitemap / RSS / Notion / 飞书 / Confluence / Epub / 语雀 / 思源 / WikiJS 等 12+ 来源）
+  - Yjs 实时协同编辑，适合团队协作场景
+  - Go 后端性能好，Clean Architecture 分层清晰
+  - 细粒度权限 + 内容保护（水印）适合企业合规需求
+  - 前端 monorepo 组件库独立封装（themes / icons / ui）
+- **缺点**：
+  - 无代码仓库导入和代码语义理解
+  - 无音视频支持
+  - AI 模型不内置，需用户自行配置第三方模型服务（DeepSeek / OpenAI 等）
+  - 不支持离线推理（依赖外部 LLM API）
+  - 无微调工作流
+  - 部署组件较多（PostgreSQL + Redis + NATS + MinIO + Caddy + Crawler = 6 个外部依赖）
+- **可借鉴**：
+  - 网页挂件 / IM 机器人的多渠道分发设计
+  - 12+ 内容导入源的 Crawler 微服务架构（独立进程，格式统一转 Markdown）
+  - Yjs 协同编辑集成方案
+  - 细粒度节点权限模型（可见 / 可访问 / 可回答 三维）
+  - 内容保护机制（水印 + 复制限制）
+  - Go 后端的 Clean Architecture 分层（domain → usecase → handler → repo）
+  - 前端 monorepo 组件库（themes / icons / ui 独立 package）
+  - OpenTelemetry + Sentry 可观测性方案
+
+**与 Delphi 的核心差异**：
+
+| 维度 | PandaWiki | Delphi |
+|------|-----------|--------|
+| 定位 | 通用知识库 / Wiki 站点生成器 | 代码优先的本地知识库 |
+| 代码理解 | 无（纯文本处理） | AST 感知切分（Tree-sitter） |
+| 数据源 | URL / Sitemap / RSS / Notion / Confluence 等 12+ 来源 | Git 仓库 / 文档 / 音视频 |
+| 模型部署 | 依赖外部 API（DeepSeek / OpenAI） | 完全离线（vLLM 本地推理） |
+| 微调 | 不支持 | 支持（数据生成 + 模型导入） |
+| 音视频 | 不支持 | Whisper 转录 + 时间戳检索 |
+| 图谱 | 不支持 | 代码关系图谱（Graph RAG） |
+| 协同编辑 | Yjs 实时协同 | 不支持（单用户场景为主） |
+| 内容导入 | 12+ 来源（Notion / Confluence / 飞书等） | Git clone + 文件上传 |
+| 分发渠道 | Wiki 站点 + 6 种 IM 机器人 + 挂件 | Web UI / API / IDE 插件 |
+| 权限体系 | 细粒度（可见 / 可访问 / 可回答）+ SSO | 基础（API Key） |
+| 内容保护 | 水印 + 复制限制 | 无 |
+| 后端语言 | Go | Python |
+| 外部依赖 | 6 个（PG + Redis + NATS + MinIO + Caddy + Crawler） | 4 个（Qdrant + TEI + vLLM + 可选 Jaeger） |
+
+**总结**：PandaWiki 在产品化、多渠道分发、内容导入广度、协同编辑和企业合规（权限 + 水印）上显著领先。但在代码理解、离线推理、模型自主性、音视频支持上与 Delphi 的设计目标完全不同。两者面向的用户群体有明显差异：PandaWiki 适合需要快速搭建产品文档站并对接多种 IM 渠道的团队，Delphi 适合需要深度理解代码仓库并完全离线运行的技术团队。
+
+**Delphi 可从 PandaWiki 学习的方向**：
+1. 多来源内容导入——Delphi 目前仅支持 Git 仓库和文件上传，可考虑增加 Confluence / Notion / 飞书文档等技术团队常用平台的导入
+2. IM 机器人分发——技术团队也大量使用飞书 / Slack / Discord，将 RAG 问答能力推送到 IM 中可降低使用门槛
+3. 内容保护机制——对于企业内网部署场景，水印和复制限制是合规刚需
+
+---
+
 ## 2. 代码专用 RAG / 代码智能
 
 ### Sourcegraph Cody
@@ -270,13 +348,13 @@
 经过调研，以下三个能力在现有开源项目中均未被完整实现：
 
 **① 代码 AST 感知切分**
-绝大多数通用 RAG 平台（RAGFlow、Dify、AnythingLLM 等）将代码文件视为普通文本，按行数或字符数切分。这导致函数被截断、上下文丢失。Bloop 和 Aider 有 Tree-sitter 集成，但前者已停止维护，后者是编辑工具而非知识库。
+绝大多数通用 RAG 平台（RAGFlow、Dify、AnythingLLM、PandaWiki 等）将代码文件视为普通文本，按行数或字符数切分。这导致函数被截断、上下文丢失。Bloop 和 Aider 有 Tree-sitter 集成，但前者已停止维护，后者是编辑工具而非知识库。
 
 **② 构建系统与依赖图理解**
 没有任何开源项目能理解 `Cargo.toml`、`package.json`、`go.mod`、`CMakeLists.txt` 等构建文件，并将依赖关系纳入检索上下文。Greptile 声称有图索引，但是闭源 SaaS。
 
 **③ 音视频 + 代码统一检索**
-技术会议录像、架构讲解视频、代码 Review 录屏——这些内容与代码仓库高度相关，但没有任何现有系统将音视频转录内容与代码语义统一索引。RAGFlow 等通用平台不支持音视频，代码专用工具更不涉及。
+技术会议录像、架构讲解视频、代码 Review 录屏——这些内容与代码仓库高度相关，但没有任何现有系统将音视频转录内容与代码语义统一索引。RAGFlow 等通用平台不支持音视频，PandaWiki 等知识库平台同样不涉及，代码专用工具更不涉及。
 
 ### 5.2 Delphi 的独特价值主张
 
@@ -296,10 +374,23 @@ Delphi = 代码仓库 RAG（AST 感知）
 
 ### 5.3 诚实评估：是否有项目已做到 90%？
 
-**没有。** 最接近的组合是 Continue.dev（代码 RAG）+ RAGFlow（文档解析），但两者之间没有统一的检索层，也都不支持音视频。Delphi 的核心创新在于**统一索引层**——将代码、文档、音视频的异构内容统一到一个可检索的知识图谱中。
+**没有。** 最接近的组合是 Continue.dev（代码 RAG）+ RAGFlow（文档解析），但两者之间没有统一的检索层，也都不支持音视频。PandaWiki 在产品化和内容导入广度上做得最好（12+ 数据源、IM 机器人、协同编辑），但完全不涉及代码语义理解和音视频处理。Delphi 的核心创新在于**统一索引层**——将代码、文档、音视频的异构内容统一到一个可检索的知识图谱中。
 
 这意味着 Delphi 需要自建核心，但可以大量复用现有组件（Tree-sitter、Whisper、LlamaIndex、混合搜索），避免重复造轮子。
 
+### 5.4 Delphi 应向竞品学习的方向
+
+| 学习方向 | 参考项目 | 说明 |
+|----------|----------|------|
+| 多来源内容导入 | PandaWiki | 12+ 数据源（Notion / Confluence / 飞书等），独立 Crawler 微服务架构 |
+| IM 机器人分发 | PandaWiki | 飞书 / 钉钉 / 企微 / Discord / 微信公众号，降低使用门槛 |
+| 内容保护 | PandaWiki | 水印 + 复制限制，企业合规刚需 |
+| 协同编辑 | PandaWiki | Yjs 实时协同，适合团队场景 |
+| 文档解析 | RAGFlow | DeepDoc 多模态文档解析，chunk 质量高 |
+| 工作流编排 | Dify | 可视化 RAG Pipeline 编排 UI |
+| 混合搜索 | Danswer/Onyx | BM25 + 向量融合架构 |
+| 引用溯源 UI | Kotaemon | 引用高亮交互设计 |
+
 ---
 
-*最后更新：2026-03-27*
+*最后更新：2026-03-28*
