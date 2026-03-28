@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 _HAS_OTEL = True
 try:
@@ -71,10 +70,11 @@ def init_telemetry(service_name: str = "delphi", otlp_endpoint: str = "http://lo
     global _initialized  # noqa: PLW0603
 
     if not _HAS_OTEL:
-        logger.info("OpenTelemetry SDK not installed, telemetry disabled")
+        logger.info("OpenTelemetry SDK 未安装, 遥测功能已禁用")
         return
 
     if _initialized:
+        logger.debug("OpenTelemetry 已初始化, 跳过重复初始化")
         return
 
     resource = Resource.create({"service.name": service_name})
@@ -84,25 +84,31 @@ def init_telemetry(service_name: str = "delphi", otlp_endpoint: str = "http://lo
     span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
     tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
     trace.set_tracer_provider(tracer_provider)
+    logger.debug("TracerProvider 已配置, endpoint={}", otlp_endpoint)
 
     # Metrics
     metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True))
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
+    logger.debug("MeterProvider 已配置, endpoint={}", otlp_endpoint)
 
     _initialized = True
-    logger.info("OpenTelemetry initialized: service=%s, endpoint=%s", service_name, otlp_endpoint)
+    logger.info("OpenTelemetry 初始化完成, service={}, endpoint={}", service_name, otlp_endpoint)
 
 
 def get_tracer(name: str) -> Any:
     """获取 tracer 实例。OTel 未安装时返回 NoOp tracer。"""
     if _HAS_OTEL:
+        logger.debug("获取 OTel tracer, name={}", name)
         return trace.get_tracer(name)
+    logger.debug("OTel 未安装, 返回 NoOp tracer, name={}", name)
     return _NoOpTracer()
 
 
 def get_meter(name: str) -> Any:
     """获取 meter 实例。OTel 未安装时返回 NoOp meter。"""
     if _HAS_OTEL:
+        logger.debug("获取 OTel meter, name={}", name)
         return metrics.get_meter(name)
+    logger.debug("OTel 未安装, 返回 NoOp meter, name={}", name)
     return _NoOpMeter()

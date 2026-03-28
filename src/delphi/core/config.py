@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     query_rewrite_enabled: bool = True
     reranker_enabled: bool = True
     reranker_top_k: int = 5
+    reranker_score_threshold: float = 0.1
     retrieve_top_k: int = 15
+    llm_no_think: bool = False
 
     # OpenTelemetry
     otel_enabled: bool = False
