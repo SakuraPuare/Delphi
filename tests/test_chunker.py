@@ -270,6 +270,7 @@ def test_split_large_function_semantic():
         chunk_lines = c.text.count("\n") + 1
         assert chunk_lines <= MAX_CHUNK_LINES
 
+
 # PLACEHOLDER_APPEND_2
 
 

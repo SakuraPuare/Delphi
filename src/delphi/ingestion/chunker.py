@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from loguru import logger
 import tree_sitter_c as tsc
 import tree_sitter_cpp as tscpp
 import tree_sitter_go as tsgo
@@ -13,6 +12,7 @@ import tree_sitter_javascript as tsjs
 import tree_sitter_python as tspy
 import tree_sitter_rust as tsrust
 import tree_sitter_typescript as tsts
+from loguru import logger
 from tree_sitter import Language, Node, Parser
 
 from delphi.ingestion.models import Chunk, ChunkMetadata
@@ -74,7 +74,6 @@ _CHUNK_NODE_TYPES: set[str] = {
     "namespace_definition",  # C++ namespace
     # Go specific
     "type_declaration",  # Go type/struct
-    "method_declaration",  # Go method
 }
 
 _NAME_NODE_TYPES: set[str] = {
@@ -167,7 +166,6 @@ def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
     """
     symbol = _get_symbol_name(node)
     parent = _get_parent_symbol(node)
-    base_row = node.start_point.row
 
     # Find the compound_statement (function body) child
     body_node = None
@@ -182,7 +180,6 @@ def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
 
     # Group consecutive statements into chunks that fit within MAX_CHUNK_LINES
     chunks: list[Chunk] = []
-    group_start = body_node.children[0]
     group_children: list[Node] = []
     group_lines = 0
 
@@ -197,16 +194,18 @@ def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
             start_byte = group_children[0].start_byte
             end_byte = group_children[-1].end_byte
             text = source[start_byte:end_byte].decode(errors="replace")
-            chunks.append(Chunk(
-                text=text,
-                metadata=ChunkMetadata(
-                    start_line=group_children[0].start_point.row + 1,
-                    end_line=group_children[-1].end_point.row + 1,
-                    node_type=node.type,
-                    symbol_name=symbol,
-                    parent_symbol=parent,
-                ),
-            ))
+            chunks.append(
+                Chunk(
+                    text=text,
+                    metadata=ChunkMetadata(
+                        start_line=group_children[0].start_point.row + 1,
+                        end_line=group_children[-1].end_point.row + 1,
+                        node_type=node.type,
+                        symbol_name=symbol,
+                        parent_symbol=parent,
+                    ),
+                )
+            )
             group_children = [child]
             group_lines = child_lines
         else:
@@ -218,16 +217,18 @@ def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
         start_byte = group_children[0].start_byte
         end_byte = group_children[-1].end_byte
         text = source[start_byte:end_byte].decode(errors="replace")
-        chunks.append(Chunk(
-            text=text,
-            metadata=ChunkMetadata(
-                start_line=group_children[0].start_point.row + 1,
-                end_line=group_children[-1].end_point.row + 1,
-                node_type=node.type,
-                symbol_name=symbol,
-                parent_symbol=parent,
-            ),
-        ))
+        chunks.append(
+            Chunk(
+                text=text,
+                metadata=ChunkMetadata(
+                    start_line=group_children[0].start_point.row + 1,
+                    end_line=group_children[-1].end_point.row + 1,
+                    node_type=node.type,
+                    symbol_name=symbol,
+                    parent_symbol=parent,
+                ),
+            )
+        )
 
     # If semantic splitting produced reasonable results, use them
     if len(chunks) > 1:
@@ -239,7 +240,7 @@ def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
 
 def _fallback_split(node: Node, source: bytes, symbol: str, parent: str) -> list[Chunk]:
     """滑动窗口回退切分。"""
-    text = source[node.start_byte:node.end_byte].decode(errors="replace")
+    text = source[node.start_byte : node.end_byte].decode(errors="replace")
     chunks = []
     for sub in fallback_chunk(text, FALLBACK_WINDOW, FALLBACK_OVERLAP):
         sub.metadata.node_type = node.type
