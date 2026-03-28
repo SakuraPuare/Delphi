@@ -884,5 +884,101 @@ def schedule_remove(
         _handle_http_error(resp)
 
 
+# --- tasks ---
+
+tasks_app = typer.Typer(help="任务管理")
+app.add_typer(tasks_app, name="tasks")
+
+
+@tasks_app.command("list")
+def tasks_list() -> None:
+    """列出所有任务"""
+    try:
+        with _client() as c:
+            import_resp = c.get("/import/tasks")
+            eval_resp = c.get("/eval/tasks")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    for resp in (import_resp, eval_resp):
+        if resp.status_code != 200:
+            _handle_http_error(resp)
+
+    tasks = []
+    for t in import_resp.json():
+        t["task_type"] = "import"
+        tasks.append(t)
+    for t in eval_resp.json():
+        t["task_type"] = "eval"
+        tasks.append(t)
+
+    if not tasks:
+        console.print("[dim]暂无任务[/dim]")
+        return
+
+    table = Table(title="任务列表")
+    table.add_column("Task ID", style="cyan")
+    table.add_column("Type")
+    table.add_column("Status")
+    table.add_column("Progress")
+    table.add_column("Message")
+    table.add_column("Created At", style="green")
+
+    from datetime import datetime
+
+    for t in tasks:
+        created = t.get("created_at") or "-"
+        if created != "-":
+            try:
+                dt = datetime.fromisoformat(created)
+                created = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                pass
+        table.add_row(
+            t.get("task_id", "-"),
+            t.get("task_type", "-"),
+            t.get("status", "-"),
+            str(t.get("progress", "-")),
+            t.get("message") or "-",
+            created,
+        )
+    console.print(table)
+
+
+@tasks_app.command("resume")
+def tasks_resume(
+    task_id: str = typer.Argument(..., help="任务 ID"),
+) -> None:
+    """恢复指定任务"""
+    # First determine task type by fetching from both endpoints
+    task_type = None
+    try:
+        with _client() as c:
+            resp = c.get(f"/import/tasks/{task_id}")
+            if resp.status_code == 200:
+                task_type = "import"
+            else:
+                resp = c.get(f"/eval/tasks/{task_id}")
+                if resp.status_code == 200:
+                    task_type = "eval"
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if task_type is None:
+        err_console.print(f"[red]任务不存在: {task_id}[/red]")
+        raise SystemExit(1)
+
+    try:
+        with _client() as c:
+            resp = c.post(f"/{task_type}/tasks/{task_id}/resume")
+    except httpx.ConnectError:
+        _handle_connection_error()
+
+    if resp.status_code != 200:
+        _handle_http_error(resp)
+
+    console.print(f"[green]✓ 任务已恢复: {task_id} ({task_type})[/green]")
+
+
 if __name__ == "__main__":
     app()
