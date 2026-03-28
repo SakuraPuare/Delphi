@@ -189,7 +189,7 @@ def _chunks_to_debug_sources(chunks, rerank_scores: bool = False) -> list[DebugS
             start_line=c.start_line,
             end_line=c.end_line,
             vector_score=c.vector_score,
-            rerank_score=c.score if rerank_scores and c.score != c.vector_score else None,
+            rerank_score=c.rerank_score if rerank_scores else None,
             from_graph=c.from_graph,
             node_type=c.node_type,
             language=c.language,

@@ -40,6 +40,7 @@ class ScoredChunk:
     end_line: int | None
     score: float
     vector_score: float = 0.0
+    rerank_score: float | None = None
     from_graph: bool = False
     node_type: str = ""
     language: str = ""
@@ -47,21 +48,35 @@ class ScoredChunk:
 
 
 class RerankerClient:
-    """TEI Reranker 服务客户端"""
+    """多后端 Reranker 客户端，支持 TEI / Jina / SiliconFlow 等"""
 
-    def __init__(self, base_url: str | None = None):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        backend: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ):
         self.base_url = (base_url or settings.reranker_url).rstrip("/")
+        self.backend = backend or settings.reranker_backend
+        self.api_key = api_key or settings.reranker_api_key
+        self.model = model or settings.reranker_model
         self._client = httpx.AsyncClient(timeout=60.0)
 
     async def rerank(self, query: str, texts: list[str], top_k: int | None = None) -> list[tuple[int, float]]:
-        """调用 TEI /rerank 接口，返回 [(original_index, score), ...] 按 score 降序"""
-        logger.debug("Rerank 请求开始, query_len={}, texts_count={}, top_k={}", len(query), len(texts), top_k)
-        resp = await self._client.post(
-            f"{self.base_url}/rerank",
-            json={"query": query, "texts": texts, "truncate": True},
+        """调用 reranker，返回 [(original_index, score), ...] 按 score 降序"""
+        logger.debug(
+            "Rerank 请求开始, backend={}, query_len={}, texts_count={}, top_k={}",
+            self.backend, len(query), len(texts), top_k,
         )
-        resp.raise_for_status()
-        results = resp.json()  # [{"index": 0, "score": 0.95}, ...]
+        if self.backend == "tei":
+            results = await self._rerank_tei(query, texts)
+        elif self.backend in ("jina", "siliconflow"):
+            results = await self._rerank_openai_compat(query, texts, top_k)
+        else:
+            msg = f"不支持的 reranker 后端: {self.backend}"
+            raise ValueError(msg)
+
         ranked = sorted(results, key=lambda x: x["score"], reverse=True)
         if top_k:
             ranked = ranked[:top_k]
@@ -71,6 +86,41 @@ class RerankerClient:
             ranked[0]["score"] if ranked else 0.0,
         )
         return [(r["index"], r["score"]) for r in ranked]
+
+    async def _rerank_tei(self, query: str, texts: list[str]) -> list[dict]:
+        """TEI /rerank 格式"""
+        resp = await self._client.post(
+            f"{self.base_url}/rerank",
+            json={"query": query, "texts": texts, "truncate": True},
+        )
+        resp.raise_for_status()
+        return resp.json()  # [{"index": 0, "score": 0.95}, ...]
+
+    async def _rerank_openai_compat(self, query: str, texts: list[str], top_k: int | None = None) -> list[dict]:
+        """Jina / SiliconFlow 等 OpenAI 兼容格式"""
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        body: dict = {
+            "model": self.model,
+            "query": query,
+            "documents": texts,
+        }
+        if top_k:
+            body["top_n"] = top_k
+        resp = await self._client.post(
+            f"{self.base_url}/v1/rerank",
+            json=body,
+            headers=headers,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Jina/SiliconFlow: {"results": [{"index": 0, "relevance_score": 0.95}]}
+        results = data.get("results", data.get("data", []))
+        return [
+            {"index": r["index"], "score": r.get("relevance_score", r.get("score", 0.0))}
+            for r in results
+        ]
 
     async def close(self):
         await self._client.aclose()
@@ -243,6 +293,7 @@ async def retrieve(
                         end_line=chunks[idx].end_line,
                         score=score,
                         vector_score=chunks[idx].vector_score,
+                        rerank_score=score,
                         from_graph=chunks[idx].from_graph,
                         node_type=chunks[idx].node_type,
                         language=chunks[idx].language,
@@ -262,6 +313,10 @@ async def retrieve(
                         settings.reranker_score_threshold,
                     )
                     rr_span.set_attribute("rag.rerank.fallback", True)
+                    # Preserve rerank scores on original chunks before falling back
+                    rerank_map = {c.file_path + c.content: c.rerank_score for c in reranked_chunks}
+                    for c in chunks:
+                        c.rerank_score = rerank_map.get(c.file_path + c.content)
                     # Use original vector-score-sorted chunks sliced to top_k
                     chunks = sorted(chunks, key=lambda c: c.vector_score, reverse=True)[:top_k]
                 else:
