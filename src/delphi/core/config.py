@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "Qwen/Qwen3.5-27B"
     embedding_api_key: str = ""
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_backend: str = "tei"  # "tei" | "jina" | "siliconflow"
+    reranker_api_key: str = ""
     embedding_backend: str = "tei"  # "tei" | "ollama" | "openai" | "cloudflare"
 
     # RAG
