@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
-import tempfile
 import time
 import uuid
 from dataclasses import asdict
@@ -15,7 +13,7 @@ from delphi.core.task_store import TaskStore  # noqa: TC001
 from delphi.core.telemetry import get_tracer
 from delphi.ingestion.chunker import chunk_file
 from delphi.ingestion.doc_chunker import chunk_doc_file
-from delphi.ingestion.git import clone_repo, collect_files
+from delphi.ingestion.git import clone_or_fetch, collect_files
 from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
 
 if TYPE_CHECKING:
@@ -96,7 +94,6 @@ async def run_git_import(
     task["status"] = "running"
     logger.info("开始 Git 导入任务, task_id={}, url={}, project={}, branch={}", task_id, url, project, branch)
     task_manager.update_progress(task_id, 0, "开始克隆仓库")
-    tmp_dir = None
 
     try:
         # 1. Clone
@@ -109,9 +106,7 @@ async def run_git_import(
                 if not repo_path.exists():
                     raise FileNotFoundError(f"路径不存在: {url}")
             else:
-                tmp_dir = Path(tempfile.mkdtemp(prefix="delphi-"))
-                repo_path = tmp_dir / "repo"
-                await clone_repo(url, repo_path, branch=branch, depth=depth)
+                repo_path = await clone_or_fetch(url, project, branch=branch, depth=depth)
 
         task_manager.update_progress(task_id, 5, "仓库克隆完成，收集文件中")
 
@@ -252,11 +247,6 @@ async def run_git_import(
         task_manager.fail_task(task_id, str(e))
         if _task_store:
             _task_store.save(task_id, {**_tasks[task_id], "status": "failed", "updated_at": time.time()})
-
-    finally:
-        if tmp_dir and tmp_dir.exists():
-            logger.debug("清理临时目录, tmp_dir={}", tmp_dir)
-            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 async def resume_git_import(

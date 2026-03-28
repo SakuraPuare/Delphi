@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import shutil
+from pathlib import Path
 
 import pathspec
 
 from delphi.ingestion.chunker import EXT_MAP
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 from loguru import logger
 
 # Directories to always skip
@@ -129,3 +126,64 @@ def collect_files(
 
     logger.info("文件收集完成, repo={}, 文件数={}", repo_path, len(result))
     return sorted(result)
+
+
+async def _git_fetch_reset(repo_dir: Path, branch: str, depth: int = 1) -> None:
+    """Fetch and hard-reset an existing cached repo."""
+    fetch_cmd = ["git", "fetch", "origin", branch, f"--depth={depth}"]
+    logger.info("拉取仓库更新, repo={}, branch={}", repo_dir, branch)
+    proc = await asyncio.create_subprocess_exec(
+        *fetch_cmd,
+        cwd=str(repo_dir),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"git fetch failed: {stderr.decode().strip()}")
+
+    reset_cmd = ["git", "reset", "--hard", f"origin/{branch}"]
+    proc = await asyncio.create_subprocess_exec(
+        *reset_cmd,
+        cwd=str(repo_dir),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"git reset failed: {stderr.decode().strip()}")
+
+    clean_cmd = ["git", "clean", "-fd"]
+    proc = await asyncio.create_subprocess_exec(
+        *clean_cmd,
+        cwd=str(repo_dir),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+    logger.info("仓库缓存已更新, repo={}", repo_dir)
+
+
+async def clone_or_fetch(
+    url: str, project: str, branch: str = "main", depth: int = 1
+) -> Path:
+    """Clone repo to cache dir, or fetch+reset if already cached.
+
+    On fetch failure, deletes the cached repo and re-clones.
+    Returns the repo directory path.
+    """
+    from delphi.core.cache import get_repo_dir
+
+    repo_dir = get_repo_dir(project, url)
+
+    if (repo_dir / ".git").exists():
+        try:
+            await _git_fetch_reset(repo_dir, branch, depth)
+            return repo_dir
+        except Exception:
+            logger.warning("缓存仓库更新失败，将重新克隆, repo={}", repo_dir, exc_info=True)
+            shutil.rmtree(repo_dir)
+            repo_dir.mkdir(parents=True, exist_ok=True)
+
+    await clone_repo(url, repo_dir, branch=branch, depth=depth)
+    return repo_dir
