@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-from delphi.api.models import QueryRequest, QueryResponse, Source
+from delphi.api.models import DebugSource, QueryDebugResponse, QueryRequest, QueryResponse, Source
 from delphi.core.config import settings
+from delphi.retrieval.intent import classify_intent
 from delphi.retrieval.rag import build_prompt, generate, generate_sync, retrieve
 
 logger = logging.getLogger(__name__)
@@ -149,3 +151,94 @@ async def query_stream(body: QueryRequest, request: Request):
         yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _chunks_to_debug_sources(chunks, rerank_scores: bool = False) -> list[DebugSource]:
+    return [
+        DebugSource(
+            file=c.file_path,
+            chunk=c.content[:300],
+            start_line=c.start_line,
+            end_line=c.end_line,
+            vector_score=c.vector_score,
+            rerank_score=c.score if rerank_scores and c.score != c.vector_score else None,
+            from_graph=c.from_graph,
+            node_type=c.node_type,
+            language=c.language,
+        )
+        for c in chunks
+    ]
+
+
+@router.post("/query/debug", response_model=QueryDebugResponse)
+async def query_debug(body: QueryRequest, request: Request) -> QueryDebugResponse:
+    """Run a query with full pipeline debug trace — returns intermediate results at each stage."""
+    if not body.question.strip():
+        raise HTTPException(400, detail="question 不能为空")
+
+    embedding_client = request.app.state.embedding
+    vector_store = request.app.state.vector_store
+    reranker = request.app.state.reranker
+    sessions = request.app.state.sessions
+    graph_store = request.app.state.graph_store
+
+    session = None
+    history = None
+    if body.session_id:
+        session = sessions.get(body.session_id)
+    if session is None and body.session_id is None:
+        session = sessions.create(body.project)
+    if session:
+        history = session.get_history()
+        session.add_user_message(body.question)
+
+    session_id = session.session_id if session else None
+
+    try:
+        result = await retrieve(
+            question=body.question,
+            project=body.project,
+            top_k=body.top_k,
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            reranker=reranker,
+            use_graph_rag=body.use_graph_rag,
+            graph_store=graph_store,
+            debug=True,
+        )
+        chunks, trace = result
+    except UnexpectedResponse as exc:
+        if exc.status_code == 404:
+            raise HTTPException(404, detail=f"项目 '{body.project}' 的集合不存在，请先导入数据") from exc
+        raise
+
+    if not chunks:
+        return QueryDebugResponse(
+            answer=NO_RESULTS_MSG,
+            timings=trace.timings or {},
+            session_id=session_id,
+        )
+
+    messages = build_prompt(body.question, chunks, history=history)
+    intent = classify_intent(body.question)
+
+    t0 = time.monotonic()
+    answer = await generate_sync(messages, settings.vllm_url, settings.llm_model)
+    llm_ms = round((time.monotonic() - t0) * 1000, 2)
+
+    if session:
+        session.add_assistant_message(answer)
+
+    timings = trace.timings or {}
+    timings["llm_ms"] = llm_ms
+
+    return QueryDebugResponse(
+        answer=answer,
+        rewritten_query=trace.rewritten_query,
+        intent=intent,
+        vector_results=_chunks_to_debug_sources(trace.vector_results or []),
+        reranked_results=_chunks_to_debug_sources(trace.reranked_results or [], rerank_scores=True),
+        final_results=_chunks_to_debug_sources(trace.final_results or [], rerank_scores=True),
+        timings=timings,
+        session_id=session_id,
+    )
