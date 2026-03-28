@@ -89,6 +89,7 @@ class TestFullRAGPipeline:
         mock_settings.reranker_enabled = False
         mock_settings.retrieve_top_k = 10
         mock_settings.reranker_top_k = 3
+        mock_settings.reranker_score_threshold = 0.0
 
         embedding = AsyncMock()
         embedding.embed_all = AsyncMock(

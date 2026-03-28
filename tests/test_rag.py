@@ -359,6 +359,8 @@ class TestRetrieveWithReranker:
 
         mock_settings.retrieve_top_k = 20
         mock_settings.reranker_top_k = 5
+        mock_settings.reranker_score_threshold = 0.0
+        mock_settings.query_rewrite_enabled = False
 
         fake_sparse = SparseVector(indices=[0], values=[1.0])
         embedding_client = AsyncMock()
@@ -482,7 +484,7 @@ class TestRewriteQuery:
         from delphi.retrieval.rag import rewrite_query
 
         mock_gen.return_value = "EmbeddingClient 配置方法"
-        result = await rewrite_query("怎么配置那个嵌入的东西", "http://fake:8000", "model")
+        result = await rewrite_query("怎么配置那个嵌入的东西，需要详细的步骤说明", "http://fake:8000", "model")
         assert result == "EmbeddingClient 配置方法"
 
     @pytest.mark.asyncio
