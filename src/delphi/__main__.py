@@ -3,9 +3,11 @@
 import uvicorn
 
 from delphi.core.config import settings
+from delphi.core.logging import setup_logging
 
 
 def main() -> None:
+    setup_logging(level="DEBUG" if settings.debug else "INFO")
     uvicorn.run(
         "delphi.api.app:app",
         host=settings.host,
