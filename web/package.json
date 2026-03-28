@@ -23,6 +23,7 @@
     "dexie": "^4.4.1",
     "dexie-react-hooks": "^4.4.0",
     "framer-motion": "^12.9.4",
+    "hash-wasm": "^4.12.0",
     "highlight.js": "^11.11.1",
     "i18next": "^26.0.0",
     "lucide-react": "^0.487.0",
