@@ -11,7 +11,8 @@
     "search": "搜索",
     "back": "返回",
     "settings": "设置",
-    "noData": "暂无数据"
+    "noData": "暂无数据",
+    "clear": "清除"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -67,7 +68,14 @@
     "startImport": "开始导入",
     "history": "导入历史",
     "progress": "进度",
-    "importSuccess": "导入任务已提交"
+    "importSuccess": "导入任务已提交",
+    "upload": "上传",
+    "dropzone": "拖拽文件到此处，或点击浏览",
+    "selectedFiles": "已选文件",
+    "computingHash": "正在计算校验和...",
+    "uploading": "上传中...",
+    "fileSkipped": "已缓存",
+    "uploadSuccess": "上传完成，导入已开始"
   },
   "chat": {
     "title": "对话",

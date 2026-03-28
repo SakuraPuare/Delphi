@@ -11,7 +11,8 @@
     "search": "Search",
     "back": "Back",
     "settings": "Settings",
-    "noData": "No data"
+    "noData": "No data",
+    "clear": "Clear"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -67,7 +68,14 @@
     "startImport": "Start Import",
     "history": "Import History",
     "progress": "Progress",
-    "importSuccess": "Import task submitted"
+    "importSuccess": "Import task submitted",
+    "upload": "Upload",
+    "dropzone": "Drag & drop files here, or click to browse",
+    "selectedFiles": "Selected Files",
+    "computingHash": "Computing checksum...",
+    "uploading": "Uploading...",
+    "fileSkipped": "Cached",
+    "uploadSuccess": "Upload complete, import started"
   },
   "chat": {
     "title": "Chat",

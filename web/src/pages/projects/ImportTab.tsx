@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { GitBranch, FileText, Film } from "lucide-react";
+import { GitBranch, FileText, Film, Upload as UploadIcon } from "lucide-react";
+import { FileDropZone } from "@/components/FileDropZone";
+import { useFileUpload } from "@/hooks/use-file-upload";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -41,10 +43,30 @@ export function ImportTab() {
   const importMedia = useImportMedia();
   const tasks = useTaskStore((s) => s.tasks);
   const [activeTab, setActiveTab] = useState("git");
+  const { uploadFiles, abort, fileProgresses, isUploading } = useFileUpload(projectName);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const gitForm = useForm<GitForm>({ defaultValues: { branch: "main", depth: 1, include: "", exclude: "" } });
   const docForm = useForm<DocForm>({ defaultValues: { file_types: "md,txt,pdf,html", recursive: true } });
   const mediaForm = useForm<MediaForm>({ defaultValues: { whisper_model: "large-v3", recursive: true } });
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  const onUploadSubmit = async () => {
+    if (selectedFiles.length === 0) return;
+    try {
+      await uploadFiles(selectedFiles);
+      toast.success(t("import.uploadSuccess"));
+      setSelectedFiles([]);
+    } catch {
+      toast.error(t("common.error"));
+    }
+  };
 
   const onGitSubmit = async (data: GitForm) => {
     try {
@@ -112,6 +134,10 @@ export function ImportTab() {
           <TabsTrigger value="media">
             <Film className="mr-1.5 h-3.5 w-3.5" />
             {t("import.media")}
+          </TabsTrigger>
+          <TabsTrigger value="upload">
+            <UploadIcon className="mr-1.5 h-3.5 w-3.5" />
+            {t("import.upload")}
           </TabsTrigger>
         </TabsList>
 
@@ -188,6 +214,67 @@ export function ImportTab() {
                 {t("import.startImport")}
               </Button>
             </form>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="upload">
+          <Card>
+            <div className="space-y-4">
+              <FileDropZone
+                accept=".md,.mdx,.txt,.rst,.pdf,.html,.htm,.mp3,.mp4,.wav,.m4a,.flac,.ogg,.webm"
+                onFilesSelected={(files) => setSelectedFiles((prev) => [...prev, ...files])}
+                disabled={isUploading}
+              />
+
+              {selectedFiles.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-sm text-zinc-300">{t("import.selectedFiles")} ({selectedFiles.length})</p>
+                  {selectedFiles.map((f, i) => {
+                    const fp = fileProgresses.get(f.name);
+                    return (
+                      <div key={`${f.name}-${i}`} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 truncate text-zinc-400">{f.name}</span>
+                        <span className="text-xs text-zinc-500">{formatSize(f.size)}</span>
+                        {fp?.progress && (
+                          <div className="w-20">
+                            <Progress value={fp.progress.percent} />
+                          </div>
+                        )}
+                        {fp?.progress?.phase && (
+                          <span className="text-xs text-zinc-500">
+                            {fp.progress.phase === "hashing" ? t("import.computingHash") :
+                             fp.progress.phase === "uploading" ? t("import.uploading") :
+                             fp.progress.phase === "skipped" ? t("import.fileSkipped") :
+                             fp.progress.phase === "done" ? "\u2713" : "..."}
+                          </span>
+                        )}
+                        {fp?.error && <span className="text-xs text-red-400">{fp.error}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={onUploadSubmit}
+                  disabled={isUploading || selectedFiles.length === 0}
+                  className="flex-1"
+                >
+                  {isUploading ? t("import.uploading") : t("import.startImport")}
+                </Button>
+                {isUploading && (
+                  <Button variant="outline" onClick={abort}>
+                    {t("common.cancel")}
+                  </Button>
+                )}
+                {!isUploading && selectedFiles.length > 0 && (
+                  <Button variant="outline" onClick={() => setSelectedFiles([])}>
+                    {t("common.clear")}
+                  </Button>
+                )}
+              </div>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>
