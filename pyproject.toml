@@ -28,6 +28,7 @@ dependencies = [
     "pymupdf>=1.25",
     "trafilatura>=2.0",
     "faster-whisper>=1.1",
+    "loguru>=0.7",
 ]
 
 [project.optional-dependencies]
