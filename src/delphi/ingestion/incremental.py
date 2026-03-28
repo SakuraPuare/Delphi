@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,12 +10,14 @@ if TYPE_CHECKING:
 
     from delphi.core.clients import VectorStore
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def compute_file_hash(path: Path) -> str:
     """计算文件内容的 SHA256 哈希值。"""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    h = hashlib.sha256(path.read_bytes()).hexdigest()
+    logger.debug("计算文件哈希, file={}, hash={}", path, h[:12])
+    return h
 
 
 async def get_existing_hashes(vector_store: VectorStore, collection: str) -> dict[str, set[str]]:
@@ -27,8 +28,10 @@ async def get_existing_hashes(vector_store: VectorStore, collection: str) -> dic
     file_hashes: dict[str, set[str]] = {}
 
     if not await vector_store.collection_exists(collection):
+        logger.debug("集合不存在，返回空哈希映射, collection={}", collection)
         return file_hashes
 
+    logger.debug("开始扫描已有文件哈希, collection={}", collection)
     offset = None
     while True:
         results, next_offset = await vector_store._client.scroll(
@@ -48,11 +51,13 @@ async def get_existing_hashes(vector_store: VectorStore, collection: str) -> dic
             break
         offset = next_offset
 
+    logger.info("已有文件哈希扫描完成, collection={}, 文件数={}", collection, len(file_hashes))
     return file_hashes
 
 
 async def delete_file_chunks(vector_store: VectorStore, collection: str, file_path: str) -> None:
     """删除指定文件的所有 chunks。"""
+    logger.debug("准备删除文件分块, collection={}, file_path={}", collection, file_path)
     from qdrant_client import models
 
     await vector_store._client.delete(
@@ -68,4 +73,4 @@ async def delete_file_chunks(vector_store: VectorStore, collection: str, file_pa
             )
         ),
     )
-    logger.info("Deleted chunks for file: %s", file_path)
+    logger.info("已删除文件的全部分块, file_path={}", file_path)

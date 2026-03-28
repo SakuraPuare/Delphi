@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
 import tree_sitter_c as tsc
 import tree_sitter_cpp as tscpp
 import tree_sitter_go as tsgo
@@ -86,6 +87,7 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
     """Parse source code with Tree-sitter and extract function/class chunks."""
     lang = _LANGUAGES.get(language)
     if lang is None:
+        logger.debug("不支持的语言，跳过 Tree-sitter 解析: language={}", language)
         return []
 
     parser = Parser(lang)
@@ -96,8 +98,10 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
 
     # If no meaningful nodes found, fall back to sliding window
     if not chunks:
+        logger.debug("未提取到有效 AST 节点，回退到滑动窗口分块, language={}", language)
         return fallback_chunk(source.decode(errors="replace"))
 
+    logger.debug("Tree-sitter 解析完成, language={}, 块数={}", language, len(chunks))
     return chunks
 
 
@@ -140,6 +144,7 @@ def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
             )
         else:
             # Split oversized nodes with sliding window
+            logger.debug("AST 节点过大，使用滑动窗口拆分, node_type={}, 行数={}", node.type, lines)
             symbol = _get_symbol_name(node)
             parent = _get_parent_symbol(node)
             for sub in fallback_chunk(text, FALLBACK_WINDOW, FALLBACK_OVERLAP):
@@ -163,7 +168,10 @@ def fallback_chunk(
     """Sliding window chunking for files that can't be parsed with Tree-sitter."""
     lines = text.splitlines(keepends=True)
     if not lines:
+        logger.debug("文本为空，跳过滑动窗口分块")
         return []
+
+    logger.debug("使用滑动窗口分块, 总行数={}, window={}, overlap={}", len(lines), window, overlap)
 
     chunks: list[Chunk] = []
     step = max(window - overlap, 1)
@@ -191,6 +199,7 @@ def fallback_chunk(
 def chunk_file(path: Path, repo_url: str = "") -> list[Chunk]:
     """Read a file and return chunks with metadata populated."""
     language = detect_language(path)
+    logger.debug("开始处理文件, path={}, language={}", path, language or "unknown")
     source = path.read_bytes()
 
     chunks = parse_code(source, language) if language else fallback_chunk(source.decode(errors="replace"))
@@ -202,4 +211,5 @@ def chunk_file(path: Path, repo_url: str = "") -> list[Chunk]:
         if language:
             chunk.metadata.language = language
 
+    logger.info("文件分块完成, path={}, 块数={}, language={}", path, len(chunks), language or "fallback")
     return chunks

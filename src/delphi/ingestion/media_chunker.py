@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from delphi.ingestion.models import Chunk, ChunkMetadata
@@ -10,7 +9,7 @@ from delphi.ingestion.models import Chunk, ChunkMetadata
 if TYPE_CHECKING:
     from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 MEDIA_EXTENSIONS: set[str] = {".mp3", ".mp4", ".wav", ".m4a", ".flac", ".ogg", ".webm"}
 
@@ -24,8 +23,11 @@ def _get_model(model_size: str = "large-v3", compute_type: str = "int8"):
     if key not in _model_cache:
         from faster_whisper import WhisperModel
 
-        logger.info("Loading WhisperModel: %s (compute_type=%s)", model_size, compute_type)
+        logger.info("加载 WhisperModel: model_size={}, compute_type={}", model_size, compute_type)
         _model_cache[key] = WhisperModel(model_size, compute_type=compute_type)
+        logger.info("WhisperModel 加载完成, key={}", key)
+    else:
+        logger.debug("复用已缓存的 WhisperModel, key={}", key)
     return _model_cache[key]
 
 
@@ -56,11 +58,12 @@ def transcribe_and_chunk(
     """
     ext = path.suffix.lower()
     if ext not in MEDIA_EXTENSIONS:
-        logger.warning("不支持的媒体格式: %s", ext)
+        logger.warning("不支持的媒体格式: ext={}", ext)
         return []
 
     # 判断媒体类型
     media_type = "video" if ext in (".mp4", ".webm") else "audio"
+    logger.info("开始转录媒体文件, path={}, media_type={}, model={}", path.name, media_type, model_size)
 
     model = _get_model(model_size, compute_type)
     segments, _info = model.transcribe(str(path))
@@ -71,7 +74,10 @@ def transcribe_and_chunk(
         seg_list.append({"start": seg.start, "end": seg.end, "text": seg.text.strip()})
 
     if not seg_list:
+        logger.warning("转录结果为空, path={}", path.name)
         return []
+
+    logger.debug("转录 segment 收集完成, path={}, segment数={}", path.name, len(seg_list))
 
     # 计算总时长
     total_duration = seg_list[-1]["end"]
@@ -110,5 +116,5 @@ def transcribe_and_chunk(
 
         win_start += step
 
-    logger.info("转录完成: %s -> %d chunks (%.1fs)", path.name, len(chunks), total_duration)
+    logger.info("转录完成: file={}, 块数={}, 总时长={:.1f}s", path.name, len(chunks), total_duration)
     return chunks

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from delphi.ingestion.chunker import fallback_chunk
 from delphi.ingestion.models import Chunk, ChunkMetadata
 
@@ -55,6 +57,7 @@ def _split_by_headings(text: str, level: int) -> list[tuple[str, str]]:
 def chunk_markdown(text: str) -> list[Chunk]:
     """Split markdown by H2 (primary), H1 fallback, H3 sub-split, sliding window last resort."""
     if not text.strip():
+        logger.debug("Markdown 内容为空，跳过分块")
         return []
 
     # Determine primary split level
@@ -69,7 +72,10 @@ def chunk_markdown(text: str) -> list[Chunk]:
             sections = h1_sections
         else:
             # No headings at all — fallback
+            logger.debug("Markdown 无标题结构，回退到滑动窗口分块")
             return _to_chunks(fallback_chunk(text), "heading", "")
+
+    logger.debug("Markdown 按 H{} 标题分块, 段落数={}", primary_level, len(sections))
 
     chunks: list[Chunk] = []
     for title, body in sections:
@@ -127,6 +133,8 @@ def chunk_text(text: str) -> list[Chunk]:
     if not paragraphs:
         return []
 
+    logger.debug("纯文本按段落分块, 段落数={}", len(paragraphs))
+
     merged: list[str] = []
     current_lines: list[str] = []
     current_count = 0
@@ -168,6 +176,7 @@ def chunk_pdf(path: Path) -> list[Chunk]:
     """按页提取 PDF 文本，每页作为一个 chunk，过长的页再用段落切分。"""
     import fitz  # pymupdf
 
+    logger.info("开始解析 PDF 文件, path={}", path)
     chunks: list[Chunk] = []
     doc = fitz.open(path)
     for page_num in range(len(doc)):
@@ -196,6 +205,7 @@ def chunk_pdf(path: Path) -> list[Chunk]:
                 )
             )
     doc.close()
+    logger.info("PDF 解析完成, path={}, 页数={}, 块数={}", path, len(doc) if hasattr(doc, '__len__') else '?', len(chunks))
     return chunks
 
 
@@ -205,7 +215,9 @@ def chunk_html(text: str) -> list[Chunk]:
 
     body = extract(text, include_comments=False, include_tables=True, output_format="txt")
     if not body or not body.strip():
+        logger.debug("HTML 正文提取为空，跳过分块")
         return []
+    logger.debug("HTML 正文提取完成, 正文长度={}", len(body))
     chunks = chunk_text(body)
     for c in chunks:
         c.metadata.language = "html"
@@ -215,9 +227,11 @@ def chunk_html(text: str) -> list[Chunk]:
 def chunk_doc_file(path: Path) -> list[Chunk]:
     """Detect file type and chunk accordingly. Fill in file-level metadata."""
     ext = path.suffix.lower()
+    logger.debug("开始处理文档文件, path={}, ext={}", path, ext)
 
     # PDF 需要特殊处理（二进制文件）
     if ext == ".pdf":
+        logger.debug("检测到 PDF 文件，使用 PDF 解析器, path={}", path)
         chunks = chunk_pdf(path)
         for c in chunks:
             c.metadata.file_path = str(path)
@@ -243,4 +257,5 @@ def chunk_doc_file(path: Path) -> list[Chunk]:
         if not c.metadata.language:
             c.metadata.language = lang
 
+    logger.info("文档分块完成, path={}, 块数={}, 类型={}", path, len(chunks), lang)
     return chunks

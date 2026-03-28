@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING
 
 import pathspec
@@ -13,7 +12,7 @@ from delphi.ingestion.chunker import EXT_MAP
 if TYPE_CHECKING:
     from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Directories to always skip
 SKIP_DIRS: set[str] = {
@@ -59,6 +58,7 @@ async def clone_repo(
         cmd.append(f"--depth={depth}")
     cmd.extend([url, str(dest)])
 
+    logger.info("开始克隆仓库, url={}, branch={}, depth={}", url, branch, depth)
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -66,14 +66,17 @@ async def clone_repo(
     )
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
+        logger.error("仓库克隆失败, url={}, stderr={}", url, stderr.decode().strip())
         raise RuntimeError(f"git clone failed: {stderr.decode().strip()}")
-    logger.info("Cloned %s → %s", url, dest)
+    logger.info("仓库克隆完成, url={}, 目标路径={}", url, dest)
 
 
 def _load_gitignore(repo_root: Path) -> pathspec.PathSpec | None:
     gitignore = repo_root / ".gitignore"
     if gitignore.exists():
+        logger.debug("加载 .gitignore 规则, repo={}", repo_root)
         return pathspec.PathSpec.from_lines("gitignore", gitignore.read_text().splitlines())
+    logger.debug("未找到 .gitignore, repo={}", repo_root)
     return None
 
 
@@ -83,6 +86,7 @@ def collect_files(
     exclude: list[str] | None = None,
 ) -> list[Path]:
     """Walk repo and return files to process, respecting filters."""
+    logger.info("开始收集仓库文件, repo={}, include={}, exclude={}", repo_path, include, exclude)
     gitignore_spec = _load_gitignore(repo_path)
     skip_spec = pathspec.PathSpec.from_lines("gitignore", SKIP_PATTERNS)
 
@@ -123,4 +127,5 @@ def collect_files(
 
         result.append(path)
 
+    logger.info("文件收集完成, repo={}, 文件数={}", repo_path, len(result))
     return sorted(result)
