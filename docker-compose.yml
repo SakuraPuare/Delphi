@@ -26,10 +26,9 @@ services:
 
   reranker:
     image: ghcr.io/huggingface/text-embeddings-inference:latest
+    command: ["--model-id", "${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}"]
     ports:
       - "8082:80"
-    environment:
-      - MODEL_ID=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
     volumes:
       - ~/.cache/huggingface:/data
     deploy:
@@ -78,7 +77,7 @@ services:
       - DELPHI_EMBEDDING_BACKEND=${DELPHI_EMBEDDING_BACKEND:-ollama}
       - DELPHI_LLM_API_KEY=${DELPHI_LLM_API_KEY:-}
       - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-deepseek-chat}
-      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-bge-m3}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DELPHI_RERANKER_URL=http://reranker:80
       - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
       - DELPHI_API_KEY=${DELPHI_API_KEY:-}
