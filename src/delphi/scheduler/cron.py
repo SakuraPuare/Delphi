@@ -15,6 +15,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from loguru import logger
+
 _FIELD_RANGES: list[tuple[int, int]] = [
     (0, 59),  # minute
     (0, 23),  # hour
@@ -83,16 +85,20 @@ def parse_cron(expr: str) -> CronExpr:
     """
     parts = expr.strip().split()
     if len(parts) != 5:
+        logger.error("cron 表达式格式错误: 需要 5 个字段, 实际 {} 个, expr={!r}", len(parts), expr)
         raise ValueError(f"cron 表达式需要 5 个字段，实际得到 {len(parts)}: {expr!r}")
 
     fields: dict[str, frozenset[int]] = {}
     for _i, (token, (lo, hi), name) in enumerate(zip(parts, _FIELD_RANGES, _FIELD_NAMES, strict=True)):
         parsed = _parse_field(token, lo, hi)
         if not parsed:
+            logger.error("cron 字段解析为空: field={}, token={!r}, expr={!r}", name, token, expr)
             raise ValueError(f"cron 字段 {name!r} 解析结果为空: {token!r}")
         fields[name] = parsed
 
-    return CronExpr(**fields)
+    result = CronExpr(**fields)
+    logger.debug("cron 表达式解析成功: expr={!r}, minute={}, hour={}, day={}, month={}, weekday={}", expr, result.minute, result.hour, result.day, result.month, result.weekday)
+    return result
 
 
 def next_run(cron: CronExpr, now: datetime) -> datetime:
@@ -103,6 +109,7 @@ def next_run(cron: CronExpr, now: datetime) -> datetime:
     # 从下一分钟开始，秒和微秒归零
     candidate = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
     max_dt = now + timedelta(days=366)
+    logger.debug("计算下次执行时间: now={}, 搜索截止={}", now, max_dt)
 
     while candidate <= max_dt:
         if (
@@ -112,6 +119,7 @@ def next_run(cron: CronExpr, now: datetime) -> datetime:
             and candidate.hour in cron.hour
             and candidate.minute in cron.minute
         ):
+            logger.debug("下次执行时间确定: {}", candidate)
             return candidate
 
         # 快速跳过：如果月份不匹配，跳到下个月
@@ -135,4 +143,5 @@ def next_run(cron: CronExpr, now: datetime) -> datetime:
         # 分钟不匹配，跳到下一分钟
         candidate += timedelta(minutes=1)
 
+    logger.error("在 366 天内未找到匹配的执行时间: cron={}", cron)
     raise RuntimeError(f"在 366 天内未找到匹配的执行时间: {cron}")

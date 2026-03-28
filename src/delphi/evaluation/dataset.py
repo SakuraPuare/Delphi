@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import json
-import logging
 import random
+import time
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 from delphi.core.clients import EmbeddingClient, VectorStore
 from delphi.core.config import settings
+from delphi.core.task_store import TaskStore  # noqa: TC001
 from delphi.retrieval.rag import generate_sync
 
-logger = logging.getLogger(__name__)
+_task_store: TaskStore | None = None
+
+
+def set_task_store(store: TaskStore) -> None:
+    global _task_store
+    _task_store = store
+
 
 GENERATE_QA_PROMPT = (
     "你是一个评估数据集生成助手。根据以下文档片段，生成一个高质量的问答对。\n\n"
@@ -49,6 +58,7 @@ async def _fetch_random_chunks(
         "性能优化",
     ]
     all_chunks: dict[str, dict[str, Any]] = {}
+    logger.info("开始随机采样 chunks: project={}, 目标数量={}", project_id, num_samples)
 
     for query in random.sample(sample_queries, min(len(sample_queries), num_samples)):
         embed_result = await embedding_client.embed_all([query])
@@ -73,6 +83,7 @@ async def _fetch_random_chunks(
     chunks = list(all_chunks.values())
     if len(chunks) > num_samples:
         chunks = random.sample(chunks, num_samples)
+    logger.info("随机采样完成: project={}, 采样到 {} 个 chunks", project_id, len(chunks))
     return chunks
 
 
@@ -80,11 +91,12 @@ async def _generate_qa_from_chunk(chunk: dict[str, Any]) -> dict[str, Any] | Non
     """基于单个 chunk 用 LLM 生成问答对。"""
     text = chunk["text"]
     if not text or len(text.strip()) < 50:
+        logger.debug("chunk 文本过短, 跳过 QA 生成: chunk_id={}", chunk["chunk_id"])
         return None
 
     messages = [
         {"role": "system", "content": GENERATE_QA_PROMPT},
-        {"role": "user", "content": f"/no_think\n文档片段（来源: {chunk['file_path']}）：\n{text}"},
+        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"文档片段（来源: {chunk['file_path']}）：\n{text}"},
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=500)
@@ -99,10 +111,10 @@ async def _generate_qa_from_chunk(chunk: dict[str, Any]) -> dict[str, Any] | Non
             "relevant_chunk_ids": [chunk["chunk_id"]],
         }
     except (json.JSONDecodeError, KeyError):
-        logger.warning("Failed to parse QA from LLM response for chunk %s", chunk["chunk_id"])
+        logger.warning("QA 解析失败, LLM 返回格式异常: chunk_id={}", chunk["chunk_id"])
         return None
     except Exception:
-        logger.warning("QA generation failed for chunk %s", chunk["chunk_id"], exc_info=True)
+        logger.warning("QA 生成失败: chunk_id={}", chunk["chunk_id"], exc_info=True)
         return None
 
 
@@ -110,6 +122,8 @@ async def generate_eval_dataset(
     project_id: str,
     num_questions: int = 50,
     output_path: str | None = None,
+    task_id: str | None = None,
+    existing_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """从已有知识库自动生成评估数据集。
 
@@ -117,6 +131,8 @@ async def generate_eval_dataset(
         project_id: 项目 ID。
         num_questions: 要生成的问答对数量。
         output_path: 输出 JSON 文件路径，为 None 时不写文件。
+        task_id: 任务 ID，用于断点续传。
+        existing_items: 已有的部分结果（恢复时传入）。
 
     Returns:
         生成的数据集字典。
@@ -125,19 +141,33 @@ async def generate_eval_dataset(
     vector_store = VectorStore()
 
     try:
-        # 多采样一些 chunks，因为部分可能生成失败
-        oversample = int(num_questions * 1.5)
-        chunks = await _fetch_random_chunks(project_id, vector_store, embedding_client, oversample)
-        logger.info("Sampled %d chunks for QA generation", len(chunks))
+        items: list[dict[str, Any]] = list(existing_items) if existing_items else []
+        remaining = num_questions - len(items)
+        logger.info(
+            "评估数据集生成开始: project={}, 目标={}, 已有={}, 剩余={}",
+            project_id, num_questions, len(items), remaining,
+        )
 
-        items: list[dict[str, Any]] = []
-        for i, chunk in enumerate(chunks):
-            if len(items) >= num_questions:
-                break
-            logger.info("Generating QA [%d/%d]...", i + 1, len(chunks))
-            qa = await _generate_qa_from_chunk(chunk)
-            if qa:
-                items.append(qa)
+        if remaining > 0:
+            # 多采样一些 chunks，因为部分可能生成失败
+            oversample = int(remaining * 1.5)
+            chunks = await _fetch_random_chunks(project_id, vector_store, embedding_client, oversample)
+            logger.info("采样 {} 个 chunks 用于 QA 生成, 过采样系数=1.5", len(chunks))
+
+            for _i, chunk in enumerate(chunks):
+                if len(items) >= num_questions:
+                    break
+                logger.info(
+                    "QA 生成进度 [{}/{}], chunk={}",
+                    len(items) + 1, num_questions, chunk.get("chunk_id", "?"),
+                )
+                qa = await _generate_qa_from_chunk(chunk)
+                if qa:
+                    items.append(qa)
+                    if _task_store and task_id:
+                        _task_store.update_checkpoint(task_id, {
+                            "partial_items": items,
+                        })
 
         dataset = {
             "project_id": project_id,
@@ -146,9 +176,42 @@ async def generate_eval_dataset(
 
         if output_path:
             Path(output_path).write_text(json.dumps(dataset, ensure_ascii=False, indent=2), encoding="utf-8")
-            logger.info("Dataset saved to %s (%d items)", output_path, len(items))
+            logger.info("评估数据集已保存: path={}, 样本数={}", output_path, len(items))
+
+        if _task_store and task_id:
+            _task_store.save(task_id, {
+                "task_id": task_id,
+                "task_type": "dataset_gen",
+                "status": "done",
+                "checkpoint": None,
+                "result": dataset,
+                "updated_at": time.time(),
+            })
 
         return dataset
     finally:
         await embedding_client.close()
         await vector_store.close()
+
+
+async def resume_eval_dataset(task_id: str) -> dict[str, Any]:
+    """从断点恢复数据集生成任务。"""
+    if not _task_store:
+        raise RuntimeError("TaskStore not initialized")
+    task_data = _task_store.load(task_id)
+    if not task_data:
+        raise ValueError(f"Task {task_id} not found")
+
+    logger.info("恢复数据集生成任务: task_id={}", task_id)
+
+    params = task_data.get("params", {})
+    checkpoint = task_data.get("checkpoint", {})
+    existing_items = checkpoint.get("partial_items", [])
+
+    return await generate_eval_dataset(
+        project_id=params["project_id"],
+        num_questions=params.get("num_questions", 50),
+        output_path=params.get("output_path"),
+        task_id=task_id,
+        existing_items=existing_items,
+    )

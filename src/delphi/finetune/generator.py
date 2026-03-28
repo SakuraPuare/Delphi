@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 from delphi.core.clients import VectorStore
 from delphi.core.config import settings
@@ -11,8 +12,6 @@ from delphi.retrieval.rag import generate_sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
-
-logger = logging.getLogger(__name__)
 
 QUESTION_GEN_PROMPT = (
     "你是一个数据标注助手。根据以下代码/文档片段，生成 {n} 个高质量的问题。\n\n"
@@ -43,6 +42,7 @@ async def generate_qa_pairs(
     vllm_url = vllm_url or settings.vllm_url
     model = model or settings.llm_model
     vs = vector_store or VectorStore()
+    logger.info("微调 QA 生成器初始化: project={}, model={}, num_samples={}, questions_per_chunk={}", project, model, num_samples, questions_per_chunk)
 
     try:
         points, _next_offset = await vs._client.scroll(
@@ -50,10 +50,10 @@ async def generate_qa_pairs(
             limit=num_samples,
         )
     except Exception as e:
-        logger.error("Failed to scroll collection '%s': %s", project, e)
+        logger.error("知识库滚动查询失败: project={}, error={}", project, e)
         raise
 
-    logger.info("Sampled %d chunks from '%s'", len(points), project)
+    logger.info("微调数据生成开始: project={}, 采样 {} 个 chunks, 每 chunk 生成 {} 个问题", project, len(points), questions_per_chunk)
 
     for point in points:
         payload = point.payload or {}
@@ -61,6 +61,7 @@ async def generate_qa_pairs(
         source = payload.get("file_path", "unknown")
 
         if not chunk_text.strip():
+            logger.debug("chunk 文本为空, 跳过: source={}", source)
             continue
 
         # 生成问题
@@ -69,10 +70,11 @@ async def generate_qa_pairs(
         try:
             raw_questions = await generate_sync(messages, vllm_url, model)
         except Exception:
-            logger.warning("Failed to generate questions for chunk from %s", source, exc_info=True)
+            logger.warning("问题生成失败: source={}", source, exc_info=True)
             continue
 
         questions = [q.strip() for q in raw_questions.strip().splitlines() if q.strip()]
+        logger.debug("生成 {} 个问题, source={}", len(questions), source)
 
         # 对每个问题生成答案
         for question in questions:
@@ -81,9 +83,10 @@ async def generate_qa_pairs(
             try:
                 answer = await generate_sync(messages, vllm_url, model)
             except Exception:
-                logger.warning("Failed to generate answer for: %s", question, exc_info=True)
+                logger.warning("答案生成失败: question={}", question[:60], exc_info=True)
                 continue
 
+            logger.debug("QA 对生成成功: question={}, source={}", question[:60], source)
             yield {
                 "question": question,
                 "answer": answer.strip(),

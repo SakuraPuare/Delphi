@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 
-from delphi.graph.extractor import CodeGraph
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+from delphi.graph.extractor import CodeGraph
 
 GRAPH_DIR = Path.home() / ".delphi" / "graphs"
 
@@ -19,6 +18,7 @@ class GraphStore:
     def __init__(self) -> None:
         self._graphs: dict[str, CodeGraph] = {}
         GRAPH_DIR.mkdir(parents=True, exist_ok=True)
+        logger.debug("图谱存储初始化, 存储目录={}", GRAPH_DIR)
 
     def _path(self, project: str) -> Path:
         return GRAPH_DIR / f"{project}.json"
@@ -29,27 +29,32 @@ class GraphStore:
         path = self._path(project)
         path.write_text(json.dumps(graph.to_dict(), ensure_ascii=False, indent=2))
         logger.info(
-            "Saved graph for '%s' (%d symbols, %d relations)", project, len(graph.symbols), len(graph.relations)
+            "图谱已保存: project={}, 符号数={}, 关系数={}, 路径={}",
+            project, len(graph.symbols), len(graph.relations), path,
         )
 
     def load(self, project: str) -> CodeGraph | None:
         """从 JSON 文件加载图谱"""
         path = self._path(project)
         if not path.exists():
+            logger.debug("图谱文件不存在, project={}, 路径={}", project, path)
             return None
         try:
             data = json.loads(path.read_text())
             graph = CodeGraph.from_dict(data)
             self._graphs[project] = graph
+            logger.info("图谱已加载: project={}, 符号数={}, 关系数={}", project, len(graph.symbols), len(graph.relations))
             return graph
         except Exception:
-            logger.warning("Failed to load graph for '%s'", project, exc_info=True)
+            logger.warning("图谱加载失败: project={}", project, exc_info=True)
             return None
 
     def get(self, project: str) -> CodeGraph | None:
         """获取项目图谱（优先内存，其次文件）"""
         if project in self._graphs:
+            logger.debug("从内存获取图谱: project={}", project)
             return self._graphs[project]
+        logger.debug("内存中无图谱, 尝试从文件加载: project={}", project)
         return self.load(project)
 
     def delete(self, project: str) -> None:
@@ -58,11 +63,14 @@ class GraphStore:
         path = self._path(project)
         if path.exists():
             path.unlink()
-            logger.info("Deleted graph for '%s'", project)
+            logger.info("图谱已删除: project={}", project)
+        else:
+            logger.debug("图谱文件不存在, 跳过删除: project={}", project)
 
     def list_projects(self) -> list[str]:
         """列出所有已保存的图谱项目"""
         projects = set(self._graphs.keys())
         for p in GRAPH_DIR.glob("*.json"):
             projects.add(p.stem)
+        logger.debug("已保存的图谱项目列表, 共 {} 个: {}", len(projects), sorted(projects))
         return sorted(projects)

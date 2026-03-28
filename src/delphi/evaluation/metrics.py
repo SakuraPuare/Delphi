@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import logging
+from loguru import logger
 
 from delphi.core.config import settings
 from delphi.retrieval.rag import generate_sync
-
-logger = logging.getLogger(__name__)
 
 
 def retrieval_recall(retrieved_ids: list[str], relevant_ids: list[str]) -> float:
@@ -14,7 +12,9 @@ def retrieval_recall(retrieved_ids: list[str], relevant_ids: list[str]) -> float
         return 0.0
     relevant_set = set(relevant_ids)
     hits = sum(1 for rid in retrieved_ids if rid in relevant_set)
-    return hits / len(relevant_set)
+    score = hits / len(relevant_set)
+    logger.debug("召回率计算: retrieved={}, relevant={}, hits={}, recall={:.4f}", len(retrieved_ids), len(relevant_ids), hits, score)
+    return score
 
 
 def retrieval_precision(retrieved_ids: list[str], relevant_ids: list[str]) -> float:
@@ -23,7 +23,9 @@ def retrieval_precision(retrieved_ids: list[str], relevant_ids: list[str]) -> fl
         return 0.0
     relevant_set = set(relevant_ids)
     hits = sum(1 for rid in retrieved_ids if rid in relevant_set)
-    return hits / len(retrieved_ids)
+    score = hits / len(retrieved_ids)
+    logger.debug("精确率计算: retrieved={}, relevant={}, hits={}, precision={:.4f}", len(retrieved_ids), len(relevant_ids), hits, score)
+    return score
 
 
 def retrieval_mrr(retrieved_ids: list[str], relevant_ids: list[str]) -> float:
@@ -33,7 +35,10 @@ def retrieval_mrr(retrieved_ids: list[str], relevant_ids: list[str]) -> float:
     relevant_set = set(relevant_ids)
     for rank, rid in enumerate(retrieved_ids, 1):
         if rid in relevant_set:
-            return 1.0 / rank
+            score = 1.0 / rank
+            logger.debug("MRR 计算: 首个命中排名={}, mrr={:.4f}", rank, score)
+            return score
+    logger.debug("MRR 计算: 无命中, mrr=0.0")
     return 0.0
 
 
@@ -62,13 +67,15 @@ async def generation_faithfulness(answer: str, contexts: list[str]) -> float:
     context_block = "\n\n".join(f"[上下文 {i}]\n{ctx}" for i, ctx in enumerate(contexts, 1))
     messages = [
         {"role": "system", "content": FAITHFULNESS_PROMPT},
-        {"role": "user", "content": f"/no_think\n上下文：\n{context_block}\n\n回答：\n{answer}"},
+        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"上下文：\n{context_block}\n\n回答：\n{answer}"},
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=10)
-        return 1.0 if "faithful" in result.strip().lower() else 0.0
+        score = 1.0 if "faithful" in result.strip().lower() else 0.0
+        logger.debug("忠实度评估完成: result={}, score={}", result.strip(), score)
+        return score
     except Exception:
-        logger.warning("Faithfulness evaluation failed", exc_info=True)
+        logger.warning("忠实度评估失败", exc_info=True)
         return 0.0
 
 
@@ -79,11 +86,13 @@ async def generation_relevance(answer: str, question: str) -> float:
     """
     messages = [
         {"role": "system", "content": RELEVANCE_PROMPT},
-        {"role": "user", "content": f"/no_think\n问题：\n{question}\n\n回答：\n{answer}"},
+        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"问题：\n{question}\n\n回答：\n{answer}"},
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=10)
-        return 1.0 if "relevant" in result.strip().lower() else 0.0
+        score = 1.0 if "relevant" in result.strip().lower() else 0.0
+        logger.debug("相关性评估完成: result={}, score={}", result.strip(), score)
+        return score
     except Exception:
-        logger.warning("Relevance evaluation failed", exc_info=True)
+        logger.warning("相关性评估失败", exc_info=True)
         return 0.0

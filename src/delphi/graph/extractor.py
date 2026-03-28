@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from tree_sitter import Parser
 
 from delphi.ingestion.chunker import _LANGUAGES, EXT_MAP
@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from tree_sitter import Node
-
-logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -609,6 +607,7 @@ def extract_graph(source: bytes, file_path: str, language: str) -> CodeGraph:
     graph = CodeGraph()
     lang_obj = _LANGUAGES.get(language)
     if lang_obj is None:
+        logger.debug("不支持的语言, 跳过提取: file={}, language={}", file_path, language)
         return graph
 
     parser = Parser(lang_obj)
@@ -618,6 +617,10 @@ def extract_graph(source: bytes, file_path: str, language: str) -> CodeGraph:
     if extractor:
         extractor(tree.root_node, file_path, graph)
 
+    logger.debug(
+        "单文件图谱提取完成: file={}, language={}, 符号数={}, 关系数={}",
+        file_path, language, len(graph.symbols), len(graph.relations),
+    )
     return graph
 
 
@@ -631,7 +634,9 @@ def extract_from_directory(
 
     merged = CodeGraph()
     root = _Path(root)
+    logger.info("开始目录级图谱提取: root={}, include={}, exclude={}", root, include, exclude)
 
+    file_count = 0
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
@@ -652,9 +657,14 @@ def extract_from_directory(
             source = path.read_bytes()
             file_graph = extract_graph(source, rel, lang)
             merged.merge(file_graph)
+            file_count += 1
         except Exception:
-            logger.warning("Failed to extract graph from %s", path, exc_info=True)
+            logger.warning("文件图谱提取失败: {}", path, exc_info=True)
 
+    logger.info(
+        "目录级图谱提取完成: root={}, 处理文件数={}, 总符号数={}, 总关系数={}",
+        root, file_count, len(merged.symbols), len(merged.relations),
+    )
     return merged
 
 
