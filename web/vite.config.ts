@@ -14,7 +14,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ["react", "react-dom"],
+          vendor: ["react", "react-dom", "react-router", "zustand"],
+          query: ["@tanstack/react-query", "dexie", "dexie-react-hooks"],
           markdown: [
             "react-markdown",
             "remark-gfm",
@@ -29,7 +30,11 @@ export default defineConfig({
             "@radix-ui/react-tooltip",
             "@radix-ui/react-collapsible",
             "@radix-ui/react-separator",
+            "@radix-ui/react-tabs",
           ],
+          i18n: ["i18next", "react-i18next"],
+          forms: ["react-hook-form"],
+          charts: ["recharts"],
         },
       },
     },
