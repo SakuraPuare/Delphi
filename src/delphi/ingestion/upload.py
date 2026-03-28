@@ -8,12 +8,12 @@ import shutil
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
-from delphi.core.cache import get_staging_dir, get_upload_dir, save_to_cache
+from delphi.core.cache import get_staging_dir, save_to_cache
 
 
 class HashMismatchError(Exception):
@@ -128,7 +128,10 @@ def load_session(upload_id: str) -> UploadSession | None:
     try:
         data = json.loads(path.read_text())
         session = _dict_to_session(data)
-        logger.debug("会话加载成功, upload_id={}, received={}/{}", upload_id, len(session.received_chunks), session.total_chunks)
+        logger.debug(
+            "会话加载成功, upload_id={}, received={}/{}",
+            upload_id, len(session.received_chunks), session.total_chunks,
+        )
         return session
     except Exception:
         logger.warning("会话加载失败, upload_id={}", upload_id, exc_info=True)

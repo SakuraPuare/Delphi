@@ -7,7 +7,6 @@ from loguru import logger
 
 from delphi.api.models import (
     ChunkUploadResponse,
-    TaskInfo,
     UploadCompleteRequest,
     UploadCompleteResponse,
     UploadInitRequest,
@@ -31,7 +30,10 @@ router = APIRouter(prefix="/import/upload", tags=["upload"])
 
 @router.post("/init", response_model=UploadInitResponse)
 async def upload_init(body: UploadInitRequest) -> UploadInitResponse:
-    logger.info("收到上传初始化请求, file_name={}, file_hash={}, project={}", body.file_name, body.file_hash, body.project)
+    logger.info(
+        "收到上传初始化请求, file_name={}, file_hash={}, project={}",
+        body.file_name, body.file_hash, body.project,
+    )
 
     if check_cache(body.project, body.file_hash):
         logger.info("文件已存在缓存中, file_hash={}", body.file_hash)

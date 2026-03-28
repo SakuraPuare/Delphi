@@ -5,7 +5,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from delphi import __version__
-from delphi.api.routes import agent, finetune, graph, health, import_, models, openai_compat, projects, query, scheduler, upload
+from delphi.api.routes import (
+    agent,
+    finetune,
+    graph,
+    health,
+    import_,
+    models,
+    openai_compat,
+    projects,
+    query,
+    scheduler,
+    upload,
+)
 from delphi.api.routes import eval as eval_routes
 from delphi.api.routes import settings as settings_routes
 from delphi.api.websocket import task_manager, ws_all_tasks, ws_single_task
