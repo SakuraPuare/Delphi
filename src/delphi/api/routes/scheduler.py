@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
+from loguru import logger
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
@@ -47,7 +47,9 @@ def _get_scheduler(request: Request):
 @router.post("/jobs", response_model=SchedulerJobInfo, status_code=201)
 async def create_job(body: SchedulerJobCreate, request: Request) -> SchedulerJobInfo:
     """创建定时同步任务。"""
-    logger.info("收到创建调度任务请求, project_id={}, repo_url={}, cron_expr={}", body.project_id, body.repo_url, body.cron_expr)
+    logger.info(
+        "收到创建调度任务请求, project_id={}, repo_url={}, cron_expr={}", body.project_id, body.repo_url, body.cron_expr
+    )
     scheduler = _get_scheduler(request)
     try:
         job = scheduler.add_job(

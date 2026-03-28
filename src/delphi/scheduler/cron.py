@@ -97,7 +97,15 @@ def parse_cron(expr: str) -> CronExpr:
         fields[name] = parsed
 
     result = CronExpr(**fields)
-    logger.debug("cron 表达式解析成功: expr={!r}, minute={}, hour={}, day={}, month={}, weekday={}", expr, result.minute, result.hour, result.day, result.month, result.weekday)
+    logger.debug(
+        "cron 表达式解析成功: expr={!r}, minute={}, hour={}, day={}, month={}, weekday={}",
+        expr,
+        result.minute,
+        result.hour,
+        result.day,
+        result.month,
+        result.weekday,
+    )
     return result
 
 

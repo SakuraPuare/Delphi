@@ -217,7 +217,9 @@ class TaskManager:
             logger.debug("新增全局 WebSocket 订阅者, 当前全局订阅数={}", len(self._global_subscribers))
         else:
             self._subscribers.setdefault(task_id, set()).add(q)
-            logger.debug("新增任务 WebSocket 订阅者, task_id={}, 当前订阅数={}", task_id, len(self._subscribers[task_id]))
+            logger.debug(
+                "新增任务 WebSocket 订阅者, task_id={}, 当前订阅数={}", task_id, len(self._subscribers[task_id])
+            )
         return q
 
     def unsubscribe(self, q: asyncio.Queue, task_id: str | None = None) -> None:

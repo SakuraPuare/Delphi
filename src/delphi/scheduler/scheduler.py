@@ -61,7 +61,13 @@ class SyncScheduler:
         """添加定时同步任务。如果 project_id 已存在则覆盖。"""
         job = SyncJob(project_id=project_id, repo_url=repo_url, cron_expr=cron_expr, branch=branch)
         self._jobs[project_id] = job
-        logger.info("调度任务已添加: project={}, cron={}, branch={}, 下次执行={}", project_id, cron_expr, branch, job.next_run_at)
+        logger.info(
+            "调度任务已添加: project={}, cron={}, branch={}, 下次执行={}",
+            project_id,
+            cron_expr,
+            branch,
+            job.next_run_at,
+        )
         return job
 
     def remove_job(self, project_id: str) -> bool:
@@ -146,7 +152,13 @@ class SyncScheduler:
 
         job.running = True
         task_id = create_task()
-        logger.info("调度任务触发: project={}, task_id={}, repo={}, branch={}", job.project_id, task_id, job.repo_url, job.branch)
+        logger.info(
+            "调度任务触发: project={}, task_id={}, repo={}, branch={}",
+            job.project_id,
+            task_id,
+            job.repo_url,
+            job.branch,
+        )
 
         try:
             await run_git_import(

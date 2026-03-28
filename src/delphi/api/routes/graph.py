@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import time
 
-from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
+from loguru import logger
 
 from delphi.api.models import (
     GraphBuildRequest,
@@ -50,7 +50,9 @@ async def _build_graph(task_id: str, request: Request, body: GraphBuildRequest) 
             exclude=body.exclude or None,
         )
         extract_ms = round((time.monotonic() - t_start) * 1000, 2)
-        logger.debug("代码符号提取完成, 符号数={}, 关系数={}, 耗时={}ms", len(graph.symbols), len(graph.relations), extract_ms)
+        logger.debug(
+            "代码符号提取完成, 符号数={}, 关系数={}, 耗时={}ms", len(graph.symbols), len(graph.relations), extract_ms
+        )
 
         task_manager.update_progress(task_id, 80, "保存图谱数据")
 

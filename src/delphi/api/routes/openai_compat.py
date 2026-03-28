@@ -7,9 +7,9 @@ import time
 import uuid
 from typing import Any
 
-from loguru import logger
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
+from loguru import logger
 from pydantic import BaseModel
 
 from delphi.core.config import settings
@@ -102,7 +102,9 @@ async def list_models(request: Request) -> dict[str, Any]:
 
 @router.post("/chat/completions")
 async def chat_completions(body: ChatCompletionRequest, request: Request):
-    logger.info("收到 OpenAI 兼容聊天请求, model={}, stream={}, messages_count={}", body.model, body.stream, len(body.messages))
+    logger.info(
+        "收到 OpenAI 兼容聊天请求, model={}, stream={}, messages_count={}", body.model, body.stream, len(body.messages)
+    )
     question = _extract_question(body.messages)
     logger.debug("提取用户问题: {}", question[:80] if question else "(空)")
 

@@ -105,7 +105,9 @@ def parse_llm_output(text: str) -> AgentStep:
     step = AgentStep(thought=thought, action=action, answer=answer)
     logger.debug(
         "LLM 输出解析完成, has_thought={}, has_action={}, has_answer={}",
-        bool(thought), action is not None, answer is not None,
+        bool(thought),
+        action is not None,
+        answer is not None,
     )
     return step
 
@@ -367,7 +369,12 @@ async def run_agent(
         # 执行工具
         logger.debug("Agent 第 {} 步执行工具: {}", step_num + 1, step.action[:80])
         observation = await exec_tool(
-            step, project, embedding_client, vector_store, reranker, top_k,
+            step,
+            project,
+            embedding_client,
+            vector_store,
+            reranker,
+            top_k,
             graph_store=graph_store,
         )
         step.observation = observation

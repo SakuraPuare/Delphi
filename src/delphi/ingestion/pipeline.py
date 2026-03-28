@@ -54,18 +54,21 @@ def create_task(task_type: str = "import", params: dict | None = None) -> str:
     }
     task_manager.create_task(task_type, task_id=task_id)
     if _task_store:
-        _task_store.save(task_id, {
-            "task_id": task_id,
-            "task_type": task_type,
-            "status": "pending",
-            "progress": 0.0,
-            "params": params,
-            "checkpoint": None,
-            "result": None,
-            "error": None,
-            "created_at": time.time(),
-            "updated_at": time.time(),
-        })
+        _task_store.save(
+            task_id,
+            {
+                "task_id": task_id,
+                "task_type": task_type,
+                "status": "pending",
+                "progress": 0.0,
+                "params": params,
+                "checkpoint": None,
+                "result": None,
+                "error": None,
+                "created_at": time.time(),
+                "updated_at": time.time(),
+            },
+        )
         logger.debug("任务已持久化到 TaskStore, task_id={}", task_id)
     return task_id
 
@@ -223,9 +226,7 @@ async def run_git_import(
 
                 # embedding 阶段占 60%-95%
                 embed_progress = 60 + (file_idx + 1) / total_files * 35
-                task_manager.update_progress(
-                    task_id, embed_progress, f"Embedding: {file_idx + 1}/{total_files} 文件"
-                )
+                task_manager.update_progress(task_id, embed_progress, f"Embedding: {file_idx + 1}/{total_files} 文件")
 
             elapsed = time.monotonic() - t0
             es_span.set_attribute("pipeline.embed_store.latency_s", round(elapsed, 2))

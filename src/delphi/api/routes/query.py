@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import time
 
-from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from loguru import logger
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from delphi.api.models import DebugSource, QueryDebugResponse, QueryRequest, QueryResponse, Source
@@ -35,7 +35,13 @@ def _chunks_to_sources(chunks):
 
 @router.post("/query", response_model=QueryResponse)
 async def query(body: QueryRequest, request: Request) -> QueryResponse:
-    logger.info("收到查询请求, project={}, question={}, top_k={}, session_id={}", body.project, body.question[:80], body.top_k, body.session_id)
+    logger.info(
+        "收到查询请求, project={}, question={}, top_k={}, session_id={}",
+        body.project,
+        body.question[:80],
+        body.top_k,
+        body.session_id,
+    )
     t_start = time.monotonic()
 
     if not body.question.strip():
@@ -233,8 +239,12 @@ async def query_debug(body: QueryRequest, request: Request) -> QueryDebugRespons
             debug=True,
         )
         chunks, trace = result
-        logger.debug("调试查询检索完成, 向量结果={}, 重排结果={}, 最终结果={}",
-                      len(trace.vector_results or []), len(trace.reranked_results or []), len(trace.final_results or []))
+        logger.debug(
+            "调试查询检索完成, 向量结果={}, 重排结果={}, 最终结果={}",
+            len(trace.vector_results or []),
+            len(trace.reranked_results or []),
+            len(trace.final_results or []),
+        )
     except UnexpectedResponse as exc:
         if exc.status_code == 404:
             logger.error("调试查询失败: 项目 '{}' 的集合不存在", body.project)

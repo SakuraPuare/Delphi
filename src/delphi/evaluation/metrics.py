@@ -13,7 +13,13 @@ def retrieval_recall(retrieved_ids: list[str], relevant_ids: list[str]) -> float
     relevant_set = set(relevant_ids)
     hits = sum(1 for rid in retrieved_ids if rid in relevant_set)
     score = hits / len(relevant_set)
-    logger.debug("召回率计算: retrieved={}, relevant={}, hits={}, recall={:.4f}", len(retrieved_ids), len(relevant_ids), hits, score)
+    logger.debug(
+        "召回率计算: retrieved={}, relevant={}, hits={}, recall={:.4f}",
+        len(retrieved_ids),
+        len(relevant_ids),
+        hits,
+        score,
+    )
     return score
 
 
@@ -24,7 +30,13 @@ def retrieval_precision(retrieved_ids: list[str], relevant_ids: list[str]) -> fl
     relevant_set = set(relevant_ids)
     hits = sum(1 for rid in retrieved_ids if rid in relevant_set)
     score = hits / len(retrieved_ids)
-    logger.debug("精确率计算: retrieved={}, relevant={}, hits={}, precision={:.4f}", len(retrieved_ids), len(relevant_ids), hits, score)
+    logger.debug(
+        "精确率计算: retrieved={}, relevant={}, hits={}, precision={:.4f}",
+        len(retrieved_ids),
+        len(relevant_ids),
+        hits,
+        score,
+    )
     return score
 
 
@@ -67,7 +79,11 @@ async def generation_faithfulness(answer: str, contexts: list[str]) -> float:
     context_block = "\n\n".join(f"[上下文 {i}]\n{ctx}" for i, ctx in enumerate(contexts, 1))
     messages = [
         {"role": "system", "content": FAITHFULNESS_PROMPT},
-        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"上下文：\n{context_block}\n\n回答：\n{answer}"},
+        {
+            "role": "user",
+            "content": ("/no_think\n" if settings.llm_no_think else "")
+            + f"上下文：\n{context_block}\n\n回答：\n{answer}",
+        },
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=10)
@@ -86,7 +102,10 @@ async def generation_relevance(answer: str, question: str) -> float:
     """
     messages = [
         {"role": "system", "content": RELEVANCE_PROMPT},
-        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"问题：\n{question}\n\n回答：\n{answer}"},
+        {
+            "role": "user",
+            "content": ("/no_think\n" if settings.llm_no_think else "") + f"问题：\n{question}\n\n回答：\n{answer}",
+        },
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=10)

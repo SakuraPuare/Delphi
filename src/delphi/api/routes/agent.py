@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import time
 
-from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from loguru import logger
 
 from delphi.api.models import AgentQueryRequest, AgentQueryResponse, AgentStepModel, Source
 from delphi.core.config import settings
@@ -70,7 +70,9 @@ def _collect_sources(steps: list[AgentStep]) -> list[Source]:
 @router.post("/query", response_model=AgentQueryResponse)
 async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryResponse:
     """非流式 agent 查询：多步推理后返回完整结果。"""
-    logger.info("收到 Agent 查询请求, project={}, question={}, max_steps={}", body.project, body.question[:80], body.max_steps)
+    logger.info(
+        "收到 Agent 查询请求, project={}, question={}, max_steps={}", body.project, body.question[:80], body.max_steps
+    )
     t_start = time.monotonic()
 
     if not body.question.strip():
@@ -117,7 +119,13 @@ async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryRe
     sources = _collect_sources(steps)
 
     elapsed_ms = round((time.monotonic() - t_start) * 1000, 2)
-    logger.info("Agent 查询完成, project={}, 耗时={}ms, 步骤数={}, 来源数={}", body.project, elapsed_ms, len(steps), len(sources))
+    logger.info(
+        "Agent 查询完成, project={}, 耗时={}ms, 步骤数={}, 来源数={}",
+        body.project,
+        elapsed_ms,
+        len(steps),
+        len(sources),
+    )
 
     return AgentQueryResponse(
         answer=answer,
@@ -130,7 +138,12 @@ async def agent_query(body: AgentQueryRequest, request: Request) -> AgentQueryRe
 @router.post("/query/stream")
 async def agent_query_stream(body: AgentQueryRequest, request: Request):
     """流式 agent 查询：通过 SSE 实时推送推理过程和最终答案。"""
-    logger.info("收到 Agent 流式查询请求, project={}, question={}, max_steps={}", body.project, body.question[:80], body.max_steps)
+    logger.info(
+        "收到 Agent 流式查询请求, project={}, question={}, max_steps={}",
+        body.project,
+        body.question[:80],
+        body.max_steps,
+    )
 
     if not body.question.strip():
         logger.warning("Agent 流式查询请求被拒绝: question 为空")
@@ -200,7 +213,11 @@ async def agent_query_stream(body: AgentQueryRequest, request: Request):
 
             # 执行工具（复用核心逻辑）
             observation = await exec_tool(
-                step, body.project, embedding_client, vector_store, reranker,
+                step,
+                body.project,
+                embedding_client,
+                vector_store,
+                reranker,
                 graph_store=graph_store,
             )
             step.observation = observation

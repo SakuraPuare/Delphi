@@ -38,8 +38,12 @@ class BatchImportResponse(BaseModel):
 async def import_git(body: GitImportRequest, request: Request) -> TaskInfo:
     logger.info("收到 Git 导入请求, url={}, project={}, branch={}", body.url, body.project, body.branch)
     params = {
-        "url": body.url, "project": body.project, "branch": body.branch,
-        "depth": body.depth, "include": body.include, "exclude": body.exclude,
+        "url": body.url,
+        "project": body.project,
+        "branch": body.branch,
+        "depth": body.depth,
+        "include": body.include,
+        "exclude": body.exclude,
     }
     task_id = create_task(task_type="git_import", params=params)
     asyncio.create_task(
@@ -83,8 +87,10 @@ async def import_docs(body: DocImportRequest, request: Request) -> TaskInfo:
 async def import_media(body: MediaImportRequest, request: Request) -> TaskInfo:
     logger.info("收到媒体导入请求, path={}, project={}, whisper_model={}", body.path, body.project, body.whisper_model)
     params = {
-        "path": body.path, "project": body.project,
-        "recursive": body.recursive, "whisper_model": body.whisper_model,
+        "path": body.path,
+        "project": body.project,
+        "recursive": body.recursive,
+        "whisper_model": body.whisper_model,
     }
     task_id = create_task(task_type="media_import", params=params)
     asyncio.create_task(
@@ -109,8 +115,12 @@ async def import_batch(body: BatchImportRequest, request: Request) -> BatchImpor
     tasks: list[TaskInfo] = []
     for repo in body.repos:
         params = {
-            "url": repo.url, "project": repo.project_name, "branch": repo.branch,
-            "depth": body.depth, "include": body.include, "exclude": body.exclude,
+            "url": repo.url,
+            "project": repo.project_name,
+            "branch": repo.branch,
+            "depth": body.depth,
+            "include": body.include,
+            "exclude": body.exclude,
         }
         task_id = create_task(task_type="git_import", params=params)
         asyncio.create_task(
@@ -137,6 +147,7 @@ async def list_tasks(request: Request) -> list[TaskInfo]:
     """列出所有导入任务（含历史）。"""
     logger.debug("收到列出导入任务请求")
     from delphi.core.task_store import TaskStore  # noqa: TC001
+
     store: TaskStore | None = getattr(request.app.state, "task_store", None)
     if store:
         result = [TaskInfo(**{k: v for k, v in t.items() if k in TaskInfo.model_fields}) for t in store.list_all()]
@@ -162,6 +173,7 @@ async def resume_task(task_id: str, request: Request) -> TaskInfo:
     """从断点恢复导入任务。"""
     logger.info("收到恢复任务请求, task_id={}", task_id)
     from delphi.core.task_store import TaskStore  # noqa: TC001
+
     store: TaskStore | None = getattr(request.app.state, "task_store", None)
     if not store:
         logger.error("恢复任务失败: TaskStore 未初始化")
@@ -176,17 +188,23 @@ async def resume_task(task_id: str, request: Request) -> TaskInfo:
     logger.debug("恢复任务类型: task_id={}, task_type={}", task_id, task_type)
 
     if task_type == "git_import":
-        asyncio.create_task(resume_git_import(
-            task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
-        ))
+        asyncio.create_task(
+            resume_git_import(
+                task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
+            )
+        )
     elif task_type == "doc_import":
-        asyncio.create_task(resume_doc_import(
-            task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
-        ))
+        asyncio.create_task(
+            resume_doc_import(
+                task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
+            )
+        )
     elif task_type == "media_import":
-        asyncio.create_task(resume_media_import(
-            task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
-        ))
+        asyncio.create_task(
+            resume_media_import(
+                task_id, embedding=request.app.state.embedding, vector_store=request.app.state.vector_store
+            )
+        )
     else:
         logger.error("不支持恢复的任务类型: task_type={}", task_type)
         raise HTTPException(400, detail=f"不支持恢复的任务类型: {task_type}")

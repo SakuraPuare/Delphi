@@ -1,8 +1,8 @@
 import time
 
-from loguru import logger
 import httpx
 from fastapi import APIRouter, Request
+from loguru import logger
 
 from delphi import __version__
 from delphi.api.models import HealthResponse, ServiceStatus, StatusResponse
@@ -53,16 +53,18 @@ async def status(request: Request) -> StatusResponse:
         logger.warning("Qdrant 健康检查失败: {}", e)
 
     # Check vLLM / OpenAI-compatible / Ollama LLM
-    vllm_status = await _check_service(
-        settings.vllm_url, ["/health", "/v1/models", "/api/tags", "/"]
-    )
+    vllm_status = await _check_service(settings.vllm_url, ["/health", "/v1/models", "/api/tags", "/"])
     # Check Embedding (TEI / Ollama / OpenAI-compatible)
-    embedding_status = await _check_service(
-        settings.embedding_url, ["/health", "/api/tags", "/"]
-    )
+    embedding_status = await _check_service(settings.embedding_url, ["/health", "/api/tags", "/"])
 
     elapsed_ms = round((time.monotonic() - t_start) * 1000, 2)
-    logger.info("系统状态检查完成, 耗时={}ms, vllm={}, qdrant={}, embedding={}", elapsed_ms, vllm_status.ok, qdrant_ok, embedding_status.ok)
+    logger.info(
+        "系统状态检查完成, 耗时={}ms, vllm={}, qdrant={}, embedding={}",
+        elapsed_ms,
+        vllm_status.ok,
+        qdrant_ok,
+        embedding_status.ok,
+    )
 
     return StatusResponse(
         vllm=vllm_status,

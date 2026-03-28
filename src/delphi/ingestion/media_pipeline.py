@@ -60,12 +60,15 @@ async def run_media_import(
 
     # Persist params for checkpoint/resume
     if _task_store:
-        _task_store.save(task_id, {
-            **task,
-            "type": "media_import",
-            "params": {"path": path, "project": project, "recursive": recursive, "whisper_model": whisper_model},
-            "updated_at": time.time(),
-        })
+        _task_store.save(
+            task_id,
+            {
+                **task,
+                "type": "media_import",
+                "params": {"path": path, "project": project, "recursive": recursive, "whisper_model": whisper_model},
+                "updated_at": time.time(),
+            },
+        )
 
     try:
         root = Path(path)
@@ -159,7 +162,7 @@ async def run_media_import(
         total_embed_files = len(chunks_by_file)
         for file_idx, (file_path, file_chunks) in enumerate(chunks_by_file.items()):
             for i in range(0, len(file_chunks), EMBED_BATCH):
-                batch = file_chunks[i:i + EMBED_BATCH]
+                batch = file_chunks[i : i + EMBED_BATCH]
                 texts = [c.text for c in batch]
                 result = await embedding.embed_all(texts)
                 ids = [uuid.uuid4().hex for _ in batch]

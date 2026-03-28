@@ -112,7 +112,11 @@ async def _eval_single(
 
     logger.debug(
         "单条评估完成: recall={:.4f}, precision={:.4f}, mrr={:.4f}, faithfulness={:.1f}, relevance={:.1f}",
-        recall, precision, mrr, faithfulness, relevance,
+        recall,
+        precision,
+        mrr,
+        faithfulness,
+        relevance,
     )
 
     return EvalResult(
@@ -173,10 +177,13 @@ async def run_evaluation(
             results.append(result)
             completed_indices.append(i)
             if _task_store and task_id:
-                _task_store.update_checkpoint(task_id, {
-                    "completed_indices": completed_indices,
-                    "partial_results": [asdict(r) for r in results],
-                })
+                _task_store.update_checkpoint(
+                    task_id,
+                    {
+                        "completed_indices": completed_indices,
+                        "partial_results": [asdict(r) for r in results],
+                    },
+                )
     finally:
         await embedding_client.close()
         await vector_store.close()
@@ -203,7 +210,9 @@ async def run_evaluation(
     logger.info(
         "评估完成: project={}, 样本数={}, 耗时={:.2f}s, "
         "avg_recall={}, avg_precision={}, avg_mrr={}, avg_faithfulness={}, avg_relevance={}",
-        pid, n, elapsed,
+        pid,
+        n,
+        elapsed,
         summary["metrics"]["avg_recall"],
         summary["metrics"]["avg_precision"],
         summary["metrics"]["avg_mrr"],
@@ -212,14 +221,17 @@ async def run_evaluation(
     )
 
     if _task_store and task_id:
-        _task_store.save(task_id, {
-            "task_id": task_id,
-            "task_type": "eval_run",
-            "status": "done",
-            "checkpoint": None,
-            "result": summary,
-            "updated_at": time.time(),
-        })
+        _task_store.save(
+            task_id,
+            {
+                "task_id": task_id,
+                "task_type": "eval_run",
+                "status": "done",
+                "checkpoint": None,
+                "result": summary,
+                "updated_at": time.time(),
+            },
+        )
 
     return summary
 

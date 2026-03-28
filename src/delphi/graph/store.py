@@ -30,7 +30,10 @@ class GraphStore:
         path.write_text(json.dumps(graph.to_dict(), ensure_ascii=False, indent=2))
         logger.info(
             "图谱已保存: project={}, 符号数={}, 关系数={}, 路径={}",
-            project, len(graph.symbols), len(graph.relations), path,
+            project,
+            len(graph.symbols),
+            len(graph.relations),
+            path,
         )
 
     def load(self, project: str) -> CodeGraph | None:
@@ -43,7 +46,9 @@ class GraphStore:
             data = json.loads(path.read_text())
             graph = CodeGraph.from_dict(data)
             self._graphs[project] = graph
-            logger.info("图谱已加载: project={}, 符号数={}, 关系数={}", project, len(graph.symbols), len(graph.relations))
+            logger.info(
+                "图谱已加载: project={}, 符号数={}, 关系数={}", project, len(graph.symbols), len(graph.relations)
+            )
             return graph
         except Exception:
             logger.warning("图谱加载失败: project={}", project, exc_info=True)

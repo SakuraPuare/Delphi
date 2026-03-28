@@ -96,7 +96,11 @@ async def _generate_qa_from_chunk(chunk: dict[str, Any]) -> dict[str, Any] | Non
 
     messages = [
         {"role": "system", "content": GENERATE_QA_PROMPT},
-        {"role": "user", "content": ("/no_think\n" if settings.llm_no_think else "") + f"文档片段（来源: {chunk['file_path']}）：\n{text}"},
+        {
+            "role": "user",
+            "content": ("/no_think\n" if settings.llm_no_think else "")
+            + f"文档片段（来源: {chunk['file_path']}）：\n{text}",
+        },
     ]
     try:
         result = await generate_sync(messages, settings.vllm_url, settings.llm_model, max_tokens=500)
@@ -145,7 +149,10 @@ async def generate_eval_dataset(
         remaining = num_questions - len(items)
         logger.info(
             "评估数据集生成开始: project={}, 目标={}, 已有={}, 剩余={}",
-            project_id, num_questions, len(items), remaining,
+            project_id,
+            num_questions,
+            len(items),
+            remaining,
         )
 
         if remaining > 0:
@@ -159,15 +166,20 @@ async def generate_eval_dataset(
                     break
                 logger.info(
                     "QA 生成进度 [{}/{}], chunk={}",
-                    len(items) + 1, num_questions, chunk.get("chunk_id", "?"),
+                    len(items) + 1,
+                    num_questions,
+                    chunk.get("chunk_id", "?"),
                 )
                 qa = await _generate_qa_from_chunk(chunk)
                 if qa:
                     items.append(qa)
                     if _task_store and task_id:
-                        _task_store.update_checkpoint(task_id, {
-                            "partial_items": items,
-                        })
+                        _task_store.update_checkpoint(
+                            task_id,
+                            {
+                                "partial_items": items,
+                            },
+                        )
 
         dataset = {
             "project_id": project_id,
@@ -179,14 +191,17 @@ async def generate_eval_dataset(
             logger.info("评估数据集已保存: path={}, 样本数={}", output_path, len(items))
 
         if _task_store and task_id:
-            _task_store.save(task_id, {
-                "task_id": task_id,
-                "task_type": "dataset_gen",
-                "status": "done",
-                "checkpoint": None,
-                "result": dataset,
-                "updated_at": time.time(),
-            })
+            _task_store.save(
+                task_id,
+                {
+                    "task_id": task_id,
+                    "task_type": "dataset_gen",
+                    "status": "done",
+                    "checkpoint": None,
+                    "result": dataset,
+                    "updated_at": time.time(),
+                },
+            )
 
         return dataset
     finally:

@@ -42,7 +42,13 @@ async def generate_qa_pairs(
     vllm_url = vllm_url or settings.vllm_url
     model = model or settings.llm_model
     vs = vector_store or VectorStore()
-    logger.info("微调 QA 生成器初始化: project={}, model={}, num_samples={}, questions_per_chunk={}", project, model, num_samples, questions_per_chunk)
+    logger.info(
+        "微调 QA 生成器初始化: project={}, model={}, num_samples={}, questions_per_chunk={}",
+        project,
+        model,
+        num_samples,
+        questions_per_chunk,
+    )
 
     try:
         points, _next_offset = await vs._client.scroll(
@@ -53,7 +59,12 @@ async def generate_qa_pairs(
         logger.error("知识库滚动查询失败: project={}, error={}", project, e)
         raise
 
-    logger.info("微调数据生成开始: project={}, 采样 {} 个 chunks, 每 chunk 生成 {} 个问题", project, len(points), questions_per_chunk)
+    logger.info(
+        "微调数据生成开始: project={}, 采样 {} 个 chunks, 每 chunk 生成 {} 个问题",
+        project,
+        len(points),
+        questions_per_chunk,
+    )
 
     for point in points:
         payload = point.payload or {}

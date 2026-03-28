@@ -74,6 +74,7 @@ async def lifespan(app: FastAPI):
     from delphi.evaluation.dataset import set_task_store as set_dataset_store
     from delphi.evaluation.runner import set_task_store as set_eval_store
     from delphi.ingestion.pipeline import set_task_store as set_pipeline_store
+
     set_pipeline_store(task_store)
     set_eval_store(task_store)
     set_dataset_store(task_store)

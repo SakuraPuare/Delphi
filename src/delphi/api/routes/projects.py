@@ -1,7 +1,7 @@
 from collections import Counter
 
-from loguru import logger
 from fastapi import APIRouter, Request
+from loguru import logger
 
 from delphi.api.models import ChunkDetail, ChunkListResponse, ProjectCreate, ProjectInfo, ProjectStats
 
@@ -28,7 +28,9 @@ async def list_projects(request: Request) -> list[ProjectInfo]:
 
 @router.post("", response_model=ProjectInfo, status_code=201)
 async def create_project(body: ProjectCreate, request: Request) -> ProjectInfo:
-    logger.info("收到创建项目请求, name={}, description={}", body.name, body.description[:50] if body.description else "")
+    logger.info(
+        "收到创建项目请求, name={}, description={}", body.name, body.description[:50] if body.description else ""
+    )
     vs = request.app.state.vector_store
     await vs.ensure_collection(body.name)
     logger.info("项目创建成功, name={}", body.name)
@@ -56,8 +58,15 @@ async def list_chunks(
     node_type: str | None = None,
     file_path: str | None = None,
 ) -> ChunkListResponse:
-    logger.debug("收到列出 chunks 请求, project={}, limit={}, offset={}, language={}, node_type={}, file_path={}",
-                  name, limit, offset, language, node_type, file_path)
+    logger.debug(
+        "收到列出 chunks 请求, project={}, limit={}, offset={}, language={}, node_type={}, file_path={}",
+        name,
+        limit,
+        offset,
+        language,
+        node_type,
+        file_path,
+    )
     vs = request.app.state.vector_store
     filters: dict[str, str] = {}
     if language:
@@ -116,8 +125,14 @@ async def project_stats(name: str, request: Request) -> ProjectStats:
             break
 
     top_files = [{"file_path": f, "count": c} for f, c in file_counter.most_common(20)]
-    logger.info("项目统计完成, project={}, total_chunks={}, 语言种类={}, 节点类型数={}, 滚动批次={}",
-                 name, total, len(lang_counter), len(type_counter), batch_count)
+    logger.info(
+        "项目统计完成, project={}, total_chunks={}, 语言种类={}, 节点类型数={}, 滚动批次={}",
+        name,
+        total,
+        len(lang_counter),
+        len(type_counter),
+        batch_count,
+    )
 
     return ProjectStats(
         total_chunks=total,

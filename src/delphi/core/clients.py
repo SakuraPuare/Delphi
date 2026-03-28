@@ -4,12 +4,12 @@ import asyncio
 from dataclasses import dataclass
 
 import httpx
-from qdrant_client import AsyncQdrantClient, models
-
 from loguru import logger
+from qdrant_client import AsyncQdrantClient, models
 
 from delphi.core.config import settings
 from delphi.core.telemetry import get_tracer
+
 _tracer = get_tracer(__name__)
 
 
@@ -40,7 +40,9 @@ class EmbeddingClient:
         self._client = httpx.AsyncClient(timeout=120.0)
         logger.info(
             "EmbeddingClient 初始化完成, backend={}, url={}, batch_size={}",
-            self.backend, self.base_url, self.batch_size,
+            self.backend,
+            self.base_url,
+            self.batch_size,
         )
 
     async def _embed_tei(self, texts: list[str]) -> list[list[float]]:
@@ -48,7 +50,12 @@ class EmbeddingClient:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
-            logger.debug("TEI embed 批次 {}/{}, 本批数量={}", i // self.batch_size + 1, -(-len(texts) // self.batch_size), len(batch))
+            logger.debug(
+                "TEI embed 批次 {}/{}, 本批数量={}",
+                i // self.batch_size + 1,
+                -(-len(texts) // self.batch_size),
+                len(batch),
+            )
             resp = await self._client.post(
                 f"{self.base_url}/embed",
                 json={"inputs": batch},
@@ -63,7 +70,12 @@ class EmbeddingClient:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
-            logger.debug("Ollama embed 批次 {}/{}, 本批数量={}", i // self.batch_size + 1, -(-len(texts) // self.batch_size), len(batch))
+            logger.debug(
+                "Ollama embed 批次 {}/{}, 本批数量={}",
+                i // self.batch_size + 1,
+                -(-len(texts) // self.batch_size),
+                len(batch),
+            )
             resp = await self._client.post(
                 f"{self.base_url}/api/embed",
                 json={"model": settings.embedding_model, "input": batch},
@@ -85,7 +97,12 @@ class EmbeddingClient:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
-            logger.debug("OpenAI embed 批次 {}/{}, 本批数量={}", i // self.batch_size + 1, -(-len(texts) // self.batch_size), len(batch))
+            logger.debug(
+                "OpenAI embed 批次 {}/{}, 本批数量={}",
+                i // self.batch_size + 1,
+                -(-len(texts) // self.batch_size),
+                len(batch),
+            )
             resp = await self._client.post(
                 f"{self.base_url}/v1/embeddings",
                 json={"model": settings.embedding_model, "input": batch},
@@ -105,7 +122,12 @@ class EmbeddingClient:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i : i + self.batch_size]
-            logger.debug("Cloudflare embed 批次 {}/{}, 本批数量={}", i // self.batch_size + 1, -(-len(texts) // self.batch_size), len(batch))
+            logger.debug(
+                "Cloudflare embed 批次 {}/{}, 本批数量={}",
+                i // self.batch_size + 1,
+                -(-len(texts) // self.batch_size),
+                len(batch),
+            )
             resp = await self._client.post(
                 self.base_url,
                 json={"text": batch},
@@ -236,7 +258,9 @@ class VectorStore:
         payloads: list[dict],
         sparse_vectors: list[SparseVector] | None = None,
     ) -> None:
-        logger.debug("upsert 开始, collection={}, 点数={}, 含稀疏向量={}", collection, len(ids), sparse_vectors is not None)
+        logger.debug(
+            "upsert 开始, collection={}, 点数={}, 含稀疏向量={}", collection, len(ids), sparse_vectors is not None
+        )
         points: list[models.PointStruct] = []
         for idx, (uid, dense_vec, payload) in enumerate(zip(ids, vectors, payloads, strict=False)):
             vector: dict = {"dense": dense_vec}
@@ -339,7 +363,13 @@ class VectorStore:
         limit: int = 50,
     ) -> list[models.Record]:
         """Scroll points filtered by file_path and optional line range overlap."""
-        logger.debug("scroll_by_file 开始, collection={}, file_path={}, lines=[{}, {}]", collection, file_path, start_line, end_line)
+        logger.debug(
+            "scroll_by_file 开始, collection={}, file_path={}, lines=[{}, {}]",
+            collection,
+            file_path,
+            start_line,
+            end_line,
+        )
         must = [
             models.FieldCondition(
                 key="file_path",

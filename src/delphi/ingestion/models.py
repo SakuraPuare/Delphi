@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
 
-from loguru import logger
-
 
 @dataclass
 class ChunkMetadata:

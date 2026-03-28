@@ -619,7 +619,10 @@ def extract_graph(source: bytes, file_path: str, language: str) -> CodeGraph:
 
     logger.debug(
         "单文件图谱提取完成: file={}, language={}, 符号数={}, 关系数={}",
-        file_path, language, len(graph.symbols), len(graph.relations),
+        file_path,
+        language,
+        len(graph.symbols),
+        len(graph.relations),
     )
     return graph
 
@@ -663,7 +666,10 @@ def extract_from_directory(
 
     logger.info(
         "目录级图谱提取完成: root={}, 处理文件数={}, 总符号数={}, 总关系数={}",
-        root, file_count, len(merged.symbols), len(merged.relations),
+        root,
+        file_count,
+        len(merged.symbols),
+        len(merged.relations),
     )
     return merged
 

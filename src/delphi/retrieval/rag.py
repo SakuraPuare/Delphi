@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from delphi.graph.store import GraphStore
 
 from loguru import logger
+
 _tracer = get_tracer(__name__)
 
 SYSTEM_PROMPT = (
@@ -66,7 +67,8 @@ class RerankerClient:
             ranked = ranked[:top_k]
         logger.debug(
             "Rerank 完成, 保留 {} 个结果, 最高分={:.4f}",
-            len(ranked), ranked[0]["score"] if ranked else 0.0,
+            len(ranked),
+            ranked[0]["score"] if ranked else 0.0,
         )
         return [(r["index"], r["score"]) for r in ranked]
 
@@ -154,7 +156,9 @@ async def retrieve(
             timings["rewrite_ms"] = round((time.monotonic() - t_rw) * 1000, 2)
             if search_query != question:
                 rewritten = search_query
-                logger.info("查询已改写: '{}' -> '{}', 耗时 {:.1f}ms", question[:60], search_query[:60], timings["rewrite_ms"])
+                logger.info(
+                    "查询已改写: '{}' -> '{}', 耗时 {:.1f}ms", question[:60], search_query[:60], timings["rewrite_ms"]
+                )
             else:
                 logger.debug("查询改写未变更, 耗时 {:.1f}ms", timings["rewrite_ms"])
 
@@ -170,7 +174,9 @@ async def retrieve(
             timings["embed_ms"] = round((time.monotonic() - t_embed) * 1000, 2)
             logger.debug(
                 "Embedding 完成, dense_dim={}, sparse={}, 耗时 {:.1f}ms",
-                len(query_vector), query_sparse is not None, timings["embed_ms"],
+                len(query_vector),
+                query_sparse is not None,
+                timings["embed_ms"],
             )
             vs_span.set_attribute("rag.vector_search.embed_ms", timings["embed_ms"])
 
@@ -182,7 +188,9 @@ async def retrieve(
             timings["search_ms"] = round((time.monotonic() - t_search) * 1000, 2)
             logger.debug(
                 "向量检索完成, 返回 {} 个候选, top_k={}, 耗时 {:.1f}ms",
-                len(results), initial_top_k, timings["search_ms"],
+                len(results),
+                initial_top_k,
+                timings["search_ms"],
             )
             vs_span.set_attribute("rag.vector_search.search_ms", timings["search_ms"])
             vs_span.set_attribute("rag.vector_search.num_results", len(results))
@@ -250,7 +258,8 @@ async def retrieve(
                 if top1_score < settings.reranker_score_threshold:
                     logger.info(
                         "Reranker 置信度不足, top1_score={:.4f} < threshold={:.4f}, 回退到向量排序",
-                        top1_score, settings.reranker_score_threshold,
+                        top1_score,
+                        settings.reranker_score_threshold,
                     )
                     rr_span.set_attribute("rag.rerank.fallback", True)
                     # Use original vector-score-sorted chunks sliced to top_k
@@ -273,7 +282,9 @@ async def retrieve(
 
         logger.info(
             "RAG 查询完成, project={}, 返回 {} 个结果, 总耗时 {:.1f}ms",
-            project, len(chunks), timings["total_ms"],
+            project,
+            len(chunks),
+            timings["total_ms"],
         )
 
         if debug:
@@ -344,7 +355,10 @@ def deduplicate_chunks(chunks: list[ScoredChunk]) -> list[ScoredChunk]:
                         is_overlap = True
                         logger.trace(
                             "重叠去重: 丢弃 chunk file={}, lines={}-{}, overlap={:.2f}",
-                            chunk.file_path, chunk.start_line, chunk.end_line, overlap,
+                            chunk.file_path,
+                            chunk.start_line,
+                            chunk.end_line,
+                            overlap,
                         )
                         break
         if not is_overlap:
@@ -382,7 +396,9 @@ def build_prompt(question: str, chunks: list[ScoredChunk], history: list[dict] |
         span.set_attribute("rag.prompt_build.intent", str(intent))
         logger.debug(
             "Prompt 构建完成, intent={}, messages_count={}, context_len={}",
-            intent, len(messages), len(context_block),
+            intent,
+            len(messages),
+            len(context_block),
         )
         return messages
 

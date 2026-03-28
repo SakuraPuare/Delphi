@@ -39,7 +39,10 @@ def _find_symbols_in_chunk(graph: CodeGraph, chunk: ScoredChunk) -> list[Symbol]
             matched.append(sym)
     logger.debug(
         "Chunk 符号匹配完成, file={}, chunk_lines={}-{}, 匹配到 {} 个符号",
-        chunk.file_path, chunk.start_line, chunk.end_line, len(matched),
+        chunk.file_path,
+        chunk.start_line,
+        chunk.end_line,
+        len(matched),
     )
     return matched
 
@@ -114,7 +117,10 @@ def expand_with_graph(
 
     logger.info(
         "Graph RAG 扩展开始, project={}, 输入 chunks={}, 图谱符号数={}, 关系数={}",
-        project_id, len(chunks), len(graph.symbols), len(graph.relations),
+        project_id,
+        len(chunks),
+        len(graph.symbols),
+        len(graph.relations),
     )
 
     # 收集所有关联符号的 qualified_name -> 最佳来源 score
@@ -151,7 +157,9 @@ def expand_with_graph(
         top_score = expanded[0].score if expanded else 0.0
         logger.info(
             "Graph RAG 扩展完成, project={}, 新增 {} 个关联 chunk, 最高分={:.4f}",
-            project_id, len(expanded), top_score,
+            project_id,
+            len(expanded),
+            top_score,
         )
     else:
         logger.debug("Graph RAG 未找到新的关联 chunk, project={}", project_id)

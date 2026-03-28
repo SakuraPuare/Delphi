@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from loguru import logger
 from fastapi import APIRouter, HTTPException, Request
+from loguru import logger
 
 from delphi.api.models import ModelActivateRequest, ModelInfoResponse, ModelRegisterRequest
 from delphi.models.manager import ModelInfo
