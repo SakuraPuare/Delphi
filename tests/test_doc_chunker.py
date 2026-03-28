@@ -4,6 +4,7 @@ from pathlib import Path
 from textwrap import dedent
 
 from delphi.ingestion.doc_chunker import (
+    _split_by_headings,
     chunk_doc_file,
     chunk_html,
     chunk_markdown,
@@ -363,20 +364,15 @@ def test_chunk_markdown_line_offsets_correct():
 
 def test_split_by_headings_skips_deeper_levels():
     """Splitting at level 2 should NOT split on ### H3 headings (line 32)."""
-    from delphi.ingestion.doc_chunker import _split_by_headings
-
     text = dedent("""\
-        ## Section One
+    ## Section One
+    Some content here.
 
-        Some content.
+    ### Subsection 1a
+    More content under subsection.
 
-        ### Subsection 1a
-
-        More content under subsection.
-
-        ## Section Two
-
-        Content of section two.
+    ## Section Two
+    Final content.
     """)
     sections = _split_by_headings(text, 2)
 
@@ -420,165 +416,6 @@ def test_chunk_text_final_flush():
     assert len(chunks) == 1
     assert "Alpha" in chunks[0].text
     assert "Gamma" in chunks[0].text
-
-
-# ---------------------------------------------------------------------------
-# Additional coverage tests
-# ---------------------------------------------------------------------------
-
-from delphi.ingestion.doc_chunker import _split_by_headings
-
-
-def test_chunk_markdown_h1_oversized_subsplit_h2():
-    """H2 oversized section sub-split at H3, where a sub-section is ALSO oversized (lines 91-97).
-
-    When primary split is H2 and a section exceeds MAX_SECTION_LINES, it sub-splits
-    at H3. If a resulting H3 sub-section is still >50 lines, it falls back to
-    fallback_chunk for that sub-section (lines 92-97).
-    """
-    # One H3 sub-section with >50 lines triggers the fallback_chunk path inside sub-split
-    h3a_body = "\n".join(f"H3A line {i}." for i in range(55))
-    h3b_body = "\n".join(f"H3B line {i}." for i in range(10))
-    text = (
-        "## Small Section\n\n"
-        "Short content.\n\n"
-        "## Big Section\n\n"
-        "### Part Alpha\n\n"
-        f"{h3a_body}\n\n"
-        "### Part Beta\n\n"
-        f"{h3b_body}\n"
-    )
-
-    chunks = chunk_markdown(text)
-
-    # Part Alpha is >50 lines so it goes through fallback_chunk (lines 92-97)
-    # Part Beta is small so it uses _make_heading_chunk (line 99)
-    symbol_names = [c.metadata.symbol_name for c in chunks]
-    assert any("Big Section > Part Alpha" in (s or "") for s in symbol_names), (
-        f"Expected 'Big Section > Part Alpha' in symbol_names, got {symbol_names}"
-    )
-    assert any("Big Section > Part Beta" in (s or "") for s in symbol_names), (
-        f"Expected 'Big Section > Part Beta' in symbol_names, got {symbol_names}"
-    )
-
-    # Line offsets should not all be 1
-    offsets = [c.metadata.start_line for c in chunks]
-    assert len(set(offsets)) > 1, f"Expected varied start_line offsets, got {offsets}"
-
-
-def test_chunk_markdown_h1_oversized_no_subsplit():
-    """H1 oversized section with no H2 sub-headings falls back to sliding window (lines 101-106)."""
-    # Build a single H1 section that is >50 lines with no H2 headings inside
-    long_body = "\n".join(f"Content line {i} of the chapter." for i in range(60))
-    text = (
-        "# Huge Chapter\n\n"
-        f"{long_body}\n\n"
-        "# Tiny Chapter\n\n"
-        "Short content.\n"
-    )
-
-    chunks = chunk_markdown(text)
-
-    # The oversized section should fall back to sliding window
-    huge_chunks = [c for c in chunks if c.metadata.symbol_name == "Huge Chapter"]
-    assert len(huge_chunks) >= 1, "Expected at least one chunk for 'Huge Chapter'"
-
-    # symbol_name should contain the H1 title
-    for c in huge_chunks:
-        assert c.metadata.symbol_name == "Huge Chapter"
-
-    # start_line / end_line should have correct offsets (not all 1)
-    if len(huge_chunks) > 1:
-        starts = [c.metadata.start_line for c in huge_chunks]
-        assert len(set(starts)) > 1, f"Expected varied start_lines for fallback chunks, got {starts}"
-
-
-def test_chunk_markdown_heading_path_in_symbol_name():
-    """After chunk_doc_file, heading path is preserved in symbol_name (not overwritten by file_path)."""
-    tmp = Path("/tmp/test_heading_path.md")
-    h2a_body = "\n".join(f"Line {i}." for i in range(30))
-    h2b_body = "\n".join(f"Line {i}." for i in range(30))
-    content = (
-        "# Title\n\n"
-        "## Section A\n\n"
-        f"{h2a_body}\n\n"
-        "## Section B\n\n"
-        f"{h2b_body}\n"
-    )
-    tmp.write_text(content)
-    try:
-        chunks = chunk_doc_file(tmp)
-        # file_path should be set to the file path
-        assert all(c.metadata.file_path == str(tmp) for c in chunks)
-        # symbol_name should still contain heading info, not be overwritten
-        symbol_names = [c.metadata.symbol_name for c in chunks if c.metadata.symbol_name]
-        assert len(symbol_names) >= 1, "Expected at least one chunk with a symbol_name heading path"
-        assert any("Section" in s for s in symbol_names), (
-            f"Expected heading path in symbol_name, got {symbol_names}"
-        )
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def test_chunk_markdown_line_offsets_correct():
-    """Each chunk's start_line corresponds to the actual line position in the original text."""
-    text = dedent("""\
-        ## First Section
-
-        Content of first section.
-
-        ## Second Section
-
-        Content of second section.
-
-        ## Third Section
-
-        Content of third section.
-    """)
-    chunks = chunk_markdown(text)
-    assert len(chunks) >= 3
-
-    lines = text.splitlines()
-    for c in chunks:
-        if c.metadata.symbol_name:
-            # The start_line should point to a line that contains the heading
-            # (1-indexed, so subtract 1 for list access)
-            idx = c.metadata.start_line - 1
-            assert 0 <= idx < len(lines), (
-                f"start_line {c.metadata.start_line} out of range for {len(lines)} lines"
-            )
-            # The line at start_line should contain the heading marker
-            assert lines[idx].startswith("#"), (
-                f"Expected heading at line {c.metadata.start_line}, got: {lines[idx]!r}"
-            )
-
-
-def test_split_by_headings_skips_deeper_levels():
-    """Splitting at level 2 should NOT treat ### H3 headings as split points (line 32)."""
-    text = dedent("""\
-        ## Section One
-
-        Some content here.
-
-        ### Subsection 1a
-
-        More content under subsection.
-
-        ## Section Two
-
-        Final content.
-    """)
-    sections = _split_by_headings(text, 2)
-
-    # Only H2 headings should produce splits
-    titled = [(t, body) for t, body, _ in sections if t]
-    assert len(titled) == 2, f"Expected 2 titled sections, got {len(titled)}: {[t for t, _ in titled]}"
-    assert titled[0][0] == "Section One"
-    assert titled[1][0] == "Section Two"
-
-    # The ### Subsection should be inside Section One's body, not a separate section
-    assert "### Subsection 1a" in titled[0][1]
-    assert "More content under subsection" in titled[0][1]
 
 
 def test_chunk_text_paragraph_merging_edge_case():
