@@ -12,7 +12,7 @@
 | `qdrant` | `qdrant/qdrant:latest` | `6333`, `6334` | 向量数据库 |
 | `embedding` | `ghcr.io/huggingface/text-embeddings-inference:latest` | `8080` | BGE-M3 嵌入服务 |
 | `api` | `delphi/api:latest`（本地构建） | `8888` | FastAPI 后端 |
-| `webui` | `ghcr.io/open-webui/open-webui:main` | `3000` | Web 前端 |
+| `frontend` | 自建 React 前端 | `3001` | Web 前端 |
 
 ## 各服务配置详情
 
@@ -128,19 +128,13 @@ api:
     retries: 3
 ```
 
-### Web UI（Open WebUI）
+### Web UI（自建 React 前端）
 
 ```yaml
-webui:
-  image: ghcr.io/open-webui/open-webui:main
+frontend:
+  build: ./web
   ports:
-    - "3000:8080"
-  environment:
-    - OPENAI_API_BASE_URL=http://api:8888/v1
-    - OPENAI_API_KEY=${DELPHI_API_KEY:-delphi}
-    - WEBUI_AUTH=false
-  volumes:
-    - webui_data:/app/backend/data
+    - "3001:80"
   depends_on:
     api:
       condition: service_healthy
@@ -150,7 +144,7 @@ webui:
 
 ```
 qdrant ──┐
-          ├──► api ──► webui
+          ├──► api ──► frontend
 embedding─┤
 vllm ─────┘
 ```
@@ -178,7 +172,6 @@ networks:
 ```yaml
 volumes:
   qdrant_data:    # Qdrant 持久化存储
-  webui_data:     # Open WebUI 用户数据
 ```
 
 ## 首次启动流程
@@ -198,7 +191,7 @@ docker compose up -d
 docker compose logs -f vllm embedding
 ```
 
-6. 所有服务就绪后，访问 `http://localhost:3000` 打开 Web 界面
+6. 所有服务就绪后，访问 `http://localhost:3001` 打开 Web 界面
 
 ## 常用运维命令
 

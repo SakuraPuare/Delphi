@@ -122,20 +122,6 @@ services:
       timeout: 5s
       retries: 3
 
-  webui:
-    image: ghcr.io/open-webui/open-webui:main
-    ports:
-      - "3000:8080"
-    environment:
-      - OPENAI_API_BASE_URL=http://api:8888/v1
-      - OPENAI_API_KEY=${DELPHI_API_KEY:-delphi}
-      - WEBUI_AUTH=false
-    volumes:
-      - webui_data:/app/backend/data
-    depends_on:
-      api:
-        condition: service_healthy
-
   frontend:
     build: ./web
     ports:
@@ -158,7 +144,6 @@ services:
 
 volumes:
   qdrant_data:
-  webui_data:
 
 networks:
   default:

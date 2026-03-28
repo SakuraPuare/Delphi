@@ -9,7 +9,7 @@
 | `embedding` | 自建 | 8002 | BGE-M3 Embedding 服务 |
 | `reranker` | 自建 | 8003 | BGE-Reranker 服务 |
 | `api` | 自建 | 8000 | RAG API 服务 |
-| `web` | 自建 / Open WebUI | 3000 | Web 前端 |
+| `web` | 自建 React 前端 | 3001 | Web 前端 |
 
 ## docker-compose.yml 结构
 

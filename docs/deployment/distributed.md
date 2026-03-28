@@ -25,10 +25,8 @@ graph TB
         API["Delphi API<br/>:8888"]
         Qdrant["Qdrant<br/>:6333"]
         Reranker["Reranker (TEI)<br/>GPU 加速"]
-        WebUI["Open WebUI<br/>:3000"]
         Frontend["前端<br/>:3001"]
 
-        WebUI --> API
         Frontend --> API
         API --> Qdrant
         API --> Reranker
@@ -142,7 +140,7 @@ docker compose -f docker-compose.yml -f docker-compose.distributed.yml up -d
 
 这条命令会：
 - 用 busybox 占位替代 vllm 和 embedding 容器（它们由 Mac 上的 Ollama 提供）
-- 保留 Qdrant、Reranker、API、WebUI 等服务在本机运行
+- 保留 Qdrant、Reranker、API、前端等服务在本机运行
 - 将 API 服务的 LLM 和 Embedding 请求指向 Mac 上的 Ollama
 
 ### 3. 网络连通性检查
@@ -267,7 +265,7 @@ docker compose \
 | `reranker` | TEI GPU 推理 | 保持不变，继续使用本地 GPU |
 | `qdrant` | 向量数据库 | 保持不变 |
 | `api` | RAG API 服务 | 环境变量指向 Mac 上的 Ollama |
-| `webui` | Open WebUI | 保持不变 |
+| `frontend` | 自建 React 前端 | 保持不变 |
 
 ### 简化命令
 
