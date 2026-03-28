@@ -124,7 +124,7 @@ async def run_doc_import(
         task["total"] = len(changed_files)
         if not changed_files:
             logger.info("未检测到变更，跳过文档导入, project={}", project)
-            task["status"] = "completed"
+            task["status"] = "done"
             task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
 
@@ -150,7 +150,7 @@ async def run_doc_import(
         logger.info("文档分块生成完成, 总块数={}, 变更文件数={}", len(all_chunks), len(changed_files))
 
         if not all_chunks:
-            task["status"] = "completed"
+            task["status"] = "done"
             task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
 
@@ -184,10 +184,10 @@ async def run_doc_import(
         elapsed = time.monotonic() - t0
         logger.info("文档向量嵌入与存储完成, 块数={}, 耗时={:.1f}s", len(all_chunks), elapsed)
 
-        task["status"] = "completed"
+        task["status"] = "done"
         logger.info("文档导入任务完成, task_id={}, 块数={}, 文件数={}", task_id, len(all_chunks), len(changed_files))
         if _task_store:
-            _task_store.save(task_id, {**task, "status": "completed", "checkpoint": None, "updated_at": time.time()})
+            _task_store.save(task_id, {**task, "status": "done", "checkpoint": None, "updated_at": time.time()})
         task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
 
     except Exception as e:

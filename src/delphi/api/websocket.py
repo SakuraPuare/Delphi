@@ -17,7 +17,7 @@ from delphi.core.task_store import TaskStore  # noqa: TC001
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
-    DONE = "completed"
+    DONE = "done"
     FAILED = "failed"
 
 
@@ -102,7 +102,10 @@ class TaskManager:
             if not task_id:
                 continue
             record = TaskRecord(task_id, task_type, data.get("metadata"))
-            record.status = TaskStatus(data.get("status", "failed"))
+            raw_status = data.get("status", "failed")
+            if raw_status == "completed":
+                raw_status = "done"
+            record.status = TaskStatus(raw_status)
             record.progress = data.get("progress", 0.0)
             record.message = data.get("message", "")
             record.result = data.get("result")

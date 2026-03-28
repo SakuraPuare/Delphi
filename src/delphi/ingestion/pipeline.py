@@ -160,7 +160,7 @@ async def run_git_import(
         task["total"] = len(changed_files)
         if not changed_files:
             logger.info("未检测到变更，跳过导入, project={}", project)
-            task["status"] = "completed"
+            task["status"] = "done"
             task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
 
@@ -196,7 +196,7 @@ async def run_git_import(
         logger.info("分块生成完成, 总块数={}, 变更文件数={}", len(all_chunks), len(changed_files))
 
         if not all_chunks:
-            task["status"] = "completed"
+            task["status"] = "done"
             task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
 
@@ -238,11 +238,11 @@ async def run_git_import(
             es_span.set_attribute("pipeline.embed_store.latency_s", round(elapsed, 2))
             logger.info("向量嵌入与存储完成, 块数={}, 耗时={:.1f}s", len(all_chunks), elapsed)
 
-        task["status"] = "completed"
+        task["status"] = "done"
         logger.info("Git 导入任务完成, task_id={}, 块数={}, 文件数={}", task_id, len(all_chunks), len(changed_files))
         task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
         if _task_store:
-            data = {**_tasks[task_id], "status": "completed", "checkpoint": None, "updated_at": time.time()}
+            data = {**_tasks[task_id], "status": "done", "checkpoint": None, "updated_at": time.time()}
             _task_store.save(task_id, data)
 
     except Exception as e:

@@ -66,7 +66,7 @@ class MediaImportRequest(BaseModel):
 
 class TaskInfo(BaseModel):
     task_id: str
-    status: Literal["pending", "running", "completed", "failed"] = "pending"
+    status: Literal["pending", "running", "done", "failed"] = "pending"
     progress: float = 0.0
     total: int = 0
     processed: int = 0
