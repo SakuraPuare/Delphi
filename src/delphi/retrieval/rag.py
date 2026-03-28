@@ -39,6 +39,10 @@ class ScoredChunk:
     start_line: int | None
     end_line: int | None
     score: float
+    vector_score: float = 0.0
+    from_graph: bool = False
+    node_type: str = ""
+    language: str = ""
 
 
 class RerankerClient:
@@ -90,6 +94,18 @@ async def rewrite_query(question: str, vllm_url: str, model: str) -> str:
         return question
 
 
+@dataclass
+class RetrievalTrace:
+    """Captures intermediate results from each pipeline stage."""
+
+    rewritten_query: str | None = None
+    vector_results: list[ScoredChunk] | None = None
+    reranked_results: list[ScoredChunk] | None = None
+    final_results: list[ScoredChunk] | None = None
+    intent: str = ""
+    timings: dict[str, float] | None = None
+
+
 async def retrieve(
     question: str,
     project: str,
@@ -99,22 +115,31 @@ async def retrieve(
     reranker: RerankerClient | None = None,
     use_graph_rag: bool = True,
     graph_store: GraphStore | None = None,
-) -> list[ScoredChunk]:
+    *,
+    debug: bool = False,
+) -> list[ScoredChunk] | tuple[list[ScoredChunk], RetrievalTrace]:
+    """Retrieve relevant chunks. If debug=True, also returns a RetrievalTrace."""
     with _tracer.start_as_current_span("rag.retrieve") as span:
         span.set_attribute("rag.query", question)
         span.set_attribute("rag.project", project)
         span.set_attribute("rag.top_k", top_k)
         t0 = time.monotonic()
+        timings: dict[str, float] = {}
 
         # Query 改写
         search_query = question
+        rewritten: str | None = None
         if settings.query_rewrite_enabled:
+            t_rw = time.monotonic()
             search_query = await rewrite_query(question, settings.vllm_url, settings.llm_model)
+            timings["rewrite_ms"] = round((time.monotonic() - t_rw) * 1000, 2)
             if search_query != question:
+                rewritten = search_query
                 logger.info("Query rewritten: '%s' -> '%s'", question, search_query)
 
         # 向量检索
         with _tracer.start_as_current_span("rag.vector_search") as vs_span:
+            t_vs = time.monotonic()
             initial_top_k = settings.retrieve_top_k if reranker else top_k
             embed_result = await embedding_client.embed_all([search_query])
             query_vector = embed_result.dense[0]
@@ -122,6 +147,7 @@ async def retrieve(
             results = await vector_store.search(
                 collection=project, vector=query_vector, sparse_vector=query_sparse, top_k=initial_top_k
             )
+            timings["search_ms"] = round((time.monotonic() - t_vs) * 1000, 2)
             vs_span.set_attribute("rag.vector_search.num_results", len(results))
 
         chunks: list[ScoredChunk] = []
@@ -134,21 +160,31 @@ async def retrieve(
                     start_line=payload.get("start_line"),
                     end_line=payload.get("end_line"),
                     score=point.score,
+                    vector_score=point.score,
+                    node_type=payload.get("node_type", ""),
+                    language=payload.get("language", ""),
                 )
             )
+
+        vector_results = list(chunks) if debug else None
 
         # Graph RAG 扩展：在 rerank 之前，通过图谱关系补充关联代码片段
         if use_graph_rag and chunks:
             from delphi.retrieval.graph_rag import expand_with_graph
 
+            pre_len = len(chunks)
             chunks = expand_with_graph(chunks, project, graph_store=graph_store)
+            for c in chunks[pre_len:]:
+                c.from_graph = True
 
         # Rerank 阶段
         if reranker and chunks:
             with _tracer.start_as_current_span("rag.rerank") as rr_span:
+                t_rr = time.monotonic()
                 texts = [c.content for c in chunks]
                 rerank_top_k = min(settings.reranker_top_k, top_k)
                 ranked = await reranker.rerank(query=question, texts=texts, top_k=rerank_top_k)
+                timings["rerank_ms"] = round((time.monotonic() - t_rr) * 1000, 2)
                 rr_span.set_attribute("rag.rerank.input_count", len(chunks))
                 rr_span.set_attribute("rag.rerank.output_count", len(ranked))
                 chunks = [
@@ -158,14 +194,34 @@ async def retrieve(
                         start_line=chunks[idx].start_line,
                         end_line=chunks[idx].end_line,
                         score=score,
+                        vector_score=chunks[idx].vector_score,
+                        from_graph=chunks[idx].from_graph,
+                        node_type=chunks[idx].node_type,
+                        language=chunks[idx].language,
                     )
                     for idx, score in ranked
                 ]
 
+        reranked_results = list(chunks) if debug else None
+
+        t_dd = time.monotonic()
         chunks = deduplicate_chunks(chunks)
+        timings["dedup_ms"] = round((time.monotonic() - t_dd) * 1000, 2)
+
         elapsed = time.monotonic() - t0
+        timings["total_ms"] = round(elapsed * 1000, 2)
         span.set_attribute("rag.retrieve.latency_ms", round(elapsed * 1000, 2))
         span.set_attribute("rag.retrieve.num_results", len(chunks))
+
+        if debug:
+            trace = RetrievalTrace(
+                rewritten_query=rewritten,
+                vector_results=vector_results,
+                reranked_results=reranked_results,
+                final_results=list(chunks),
+                timings=timings,
+            )
+            return chunks, trace
         return chunks
 
 
