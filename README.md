@@ -134,7 +134,6 @@ Delphi 本身不负责训练，但提供完整的微调工作流支持：
 
 | 阶段 | 方案 |
 |------|------|
-| MVP | Open WebUI（开箱即用） |
 | 定制 | 自建 Web UI（React + SSE，代码高亮、引用溯源） |
 | 进阶 | VS Code 插件 / Continue.dev 集成 |
 
@@ -147,7 +146,7 @@ Delphi 本身不负责训练，但提供完整的微调工作流支持：
 - [x] 数据导入：Git 仓库 + 文档目录
 - [x] Tree-sitter 代码切分 + 文档切分
 - [x] 基础 RAG Pipeline
-- [x] Open WebUI 接入
+- [x] 自建前端（React + SSE）
 
 ### Phase 2：数据增强
 - [x] 音视频转录导入
