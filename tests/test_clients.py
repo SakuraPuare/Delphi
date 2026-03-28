@@ -110,7 +110,7 @@ class TestEmbeddingClientEmbed:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32, backend="tei")
         ec._client = mock_client
 
         result = await ec.embed(["hello", "world"])
@@ -130,7 +130,7 @@ class TestEmbeddingClientEmbed:
             resp.raise_for_status = MagicMock()
             return resp
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=2)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=2, backend="tei")
         mock_client = AsyncMock()
         mock_client.post = fake_post
         ec._client = mock_client
@@ -160,7 +160,7 @@ class TestEmbeddingClientEmbedSparse:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32, backend="tei")
         ec._client = mock_client
 
         result = await ec.embed_sparse(["hello", "world"])
@@ -185,7 +185,7 @@ class TestEmbeddingClientEmbedSparse:
             resp.raise_for_status = MagicMock()
             return resp
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=2)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=2, backend="tei")
         mock_client = AsyncMock()
         mock_client.post = fake_post
         ec._client = mock_client
@@ -209,7 +209,7 @@ class TestEmbeddingClientEmbedSparse:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32, backend="tei")
         ec._client = mock_client
 
         await ec.embed_sparse(["test"])
@@ -229,7 +229,7 @@ class TestEmbeddingClientEmbedAll:
         """embed_all 并发调用 embed + embed_sparse，返回 EmbeddingResult。"""
         from delphi.core.clients import EmbeddingResult, SparseVector
 
-        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32)
+        ec = EmbeddingClient(base_url="http://fake:8001", batch_size=32, backend="tei")
         ec.embed = AsyncMock(return_value=[[0.1] * 10, [0.2] * 10])
         ec.embed_sparse = AsyncMock(
             return_value=[
