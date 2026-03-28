@@ -29,6 +29,7 @@ dependencies = [
     "trafilatura>=2.0",
     "faster-whisper>=1.1",
     "loguru>=0.7",
+    "tenacity>=9.0",
 ]
 
 [project.optional-dependencies]
