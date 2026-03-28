@@ -142,7 +142,7 @@ for segment in segments:
   文本分块（Chunking）
         │
         ▼
-  BGE-M3 向量化 → 存入 Milvus
+  BGE-M3 向量化 → 存入 Qdrant
         │
         ▼
   可被 RAG 检索的知识片段

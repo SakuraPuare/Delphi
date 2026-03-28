@@ -67,7 +67,7 @@ services:
 Compose 默认为所有服务创建一个共享网络，服务之间可以直接用服务名互相访问（内置 DNS 解析）：
 
 ```yaml
-# api 服务可以通过 http://milvus:19530 访问 milvus 服务
+# api 服务可以通过 http://qdrant:6333 访问 qdrant 服务
 # 无需知道容器的实际 IP 地址
 networks:
   delphi-net:
@@ -80,8 +80,7 @@ networks:
 
 ```yaml
 volumes:
-  milvus-data:    # 向量数据库数据
-  postgres-data:  # 关系型数据库数据
+  qdrant-data:    # 向量数据库数据
   model-cache:    # 下载的 AI 模型文件
 ```
 
@@ -122,10 +121,10 @@ docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
 
 ```yaml
 services:
-  milvus:
-    image: milvusdb/milvus:latest
+  qdrant:
+    image: qdrant/qdrant:latest
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -138,10 +137,8 @@ services:
 services:
   api:
     depends_on:
-      milvus:
-        condition: service_healthy   # 等待 milvus 健康后再启动
-      postgres:
-        condition: service_healthy
+      qdrant:
+        condition: service_healthy   # 等待 qdrant 健康后再启动
 ```
 
 `condition: service_healthy` 比简单的 `depends_on` 更可靠，后者只等待容器启动，不等待服务就绪。
@@ -177,8 +174,8 @@ Delphi 的完整服务栈通过一个 `docker-compose.yml` 文件管理：
 │  └────┬─────────────┬──────────────────┬─────────┘  │
 │       │             │                  │             │
 │  ┌────▼─────┐  ┌────▼─────┐  ┌────────▼─────────┐  │
-│  │  Milvus  │  │ Postgres │  │  MinIO           │  │
-│  │ (向量库) │  │ (元数据) │  │  (文件存储)      │  │
+│  │  Qdrant  │  │  vLLM   │  │  TEI             │  │
+│  │ (向量库) │  │ (LLM)   │  │  (Embedding)     │  │
 │  └──────────┘  └──────────┘  └──────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
