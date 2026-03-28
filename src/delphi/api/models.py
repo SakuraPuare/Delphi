@@ -193,3 +193,54 @@ class RelationInfo(BaseModel):
 class GraphQueryResponse(BaseModel):
     symbols: list[SymbolInfo] = []
     relations: list[RelationInfo] = []
+
+
+# --- Pipeline Debug ---
+
+
+class ChunkDetail(BaseModel):
+    id: str
+    text_preview: str
+    file_path: str
+    language: str = ""
+    node_type: str = ""
+    symbol_name: str = ""
+    parent_symbol: str = ""
+    start_line: int = 0
+    end_line: int = 0
+
+
+class ChunkListResponse(BaseModel):
+    chunks: list[ChunkDetail]
+    next_offset: str | None = None
+    total: int = 0
+
+
+class ProjectStats(BaseModel):
+    total_chunks: int = 0
+    by_language: dict[str, int] = {}
+    by_node_type: dict[str, int] = {}
+    top_files: list[dict[str, int | str]] = []
+
+
+class DebugSource(BaseModel):
+    file: str
+    chunk: str = ""
+    start_line: int | None = None
+    end_line: int | None = None
+    vector_score: float = 0.0
+    rerank_score: float | None = None
+    from_graph: bool = False
+    node_type: str = ""
+    language: str = ""
+
+
+class QueryDebugResponse(BaseModel):
+    answer: str
+    rewritten_query: str | None = None
+    intent: str = ""
+    vector_results: list[DebugSource] = []
+    reranked_results: list[DebugSource] = []
+    final_results: list[DebugSource] = []
+    timings: dict[str, float] = {}
+    session_id: str | None = None
