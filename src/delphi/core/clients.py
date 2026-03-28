@@ -196,7 +196,7 @@ class EmbeddingClient:
 class VectorStore:
     """Qdrant 向量存储封装"""
 
-    VECTOR_SIZE = 1024  # BGE-M3 dense vector dimension
+    VECTOR_SIZE = 1024  # Qwen3-Embedding-0.6B / BGE-M3 默认 1024 维
 
     def __init__(self, url: str | None = None, *, client: AsyncQdrantClient | None = None) -> None:
         self._url = url or settings.qdrant_url

@@ -38,10 +38,10 @@ services:
       - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-deepseek-chat}
       - DELPHI_EMBEDDING_URL=http://${MAC_IP:-192.168.100.45}:11434
       - DELPHI_EMBEDDING_BACKEND=ollama
-      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-bge-m3}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DELPHI_QDRANT_URL=http://qdrant:6333
       - DELPHI_RERANKER_URL=http://reranker:80
-      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-tomaarsen/Qwen3-Reranker-0.6B-seq-cls}
       - DELPHI_API_KEY=${DELPHI_API_KEY:-}
     depends_on:
       qdrant:

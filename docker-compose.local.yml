@@ -7,8 +7,8 @@
 #
 # 默认模型：
 #   LLM:       Qwen/Qwen3.5-27B（需要 ~20GB VRAM）
-#   Embedding: BAAI/bge-m3
-#   Reranker:  BAAI/bge-reranker-v2-m3
+#   Embedding: Qwen/Qwen3-Embedding-0.6B
+#   Reranker:  tomaarsen/Qwen3-Reranker-0.6B-seq-cls
 #
 # 可通过 .env 覆盖模型和参数。
 
@@ -33,7 +33,7 @@ services:
     ports:
       - "8080:80"
     environment:
-      - MODEL_ID=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - MODEL_ID=${DELPHI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - MAX_BATCH_TOKENS=16384
     volumes:
       - ~/.cache/huggingface:/data
@@ -56,7 +56,7 @@ services:
     ports:
       - "8082:80"
     environment:
-      - MODEL_ID=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - MODEL_ID=${DELPHI_RERANKER_MODEL:-tomaarsen/Qwen3-Reranker-0.6B-seq-cls}
     volumes:
       - ~/.cache/huggingface:/data
     deploy:
@@ -114,9 +114,9 @@ services:
       - DELPHI_EMBEDDING_BACKEND=tei
       - DELPHI_LLM_API_KEY=${DELPHI_LLM_API_KEY:-}
       - DELPHI_LLM_MODEL=${DELPHI_LLM_MODEL:-Qwen/Qwen3.5-27B}
-      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - DELPHI_EMBEDDING_MODEL=${DELPHI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DELPHI_RERANKER_URL=http://reranker:80
-      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - DELPHI_RERANKER_MODEL=${DELPHI_RERANKER_MODEL:-tomaarsen/Qwen3-Reranker-0.6B-seq-cls}
       - DELPHI_API_KEY=${DELPHI_API_KEY:-}
       - DELPHI_OTEL_ENABLED=${DELPHI_OTEL_ENABLED:-false}
       - DELPHI_OTEL_ENDPOINT=${DELPHI_OTEL_ENDPOINT:-http://jaeger:4317}

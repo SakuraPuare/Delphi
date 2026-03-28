@@ -6,8 +6,8 @@
 |------|------|------|------|
 | `vllm` | vllm/vllm-openai | 8001 | LLM 推理引擎 |
 | `qdrant` | qdrant/qdrant | 6333, 6334 | 向量数据库 |
-| `embedding` | 自建 | 8002 | BGE-M3 Embedding 服务 |
-| `reranker` | 自建 | 8003 | BGE-Reranker 服务 |
+| `embedding` | 自建 | 8002 | Qwen3-Embedding 服务 |
+| `reranker` | 自建 | 8003 | Qwen3-Reranker 服务 |
 | `api` | 自建 | 8000 | RAG API 服务 |
 | `web` | 自建 React 前端 | 3001 | Web 前端 |
 
@@ -108,11 +108,11 @@ mkdir -p models
 # 下载 LLM（约 20GB）
 huggingface-cli download Qwen/Qwen2.5-Coder-32B-Instruct-AWQ --local-dir models/Qwen2.5-Coder-32B-Instruct-AWQ
 
-# 下载 Embedding（约 2.2GB）
-huggingface-cli download BAAI/bge-m3 --local-dir models/bge-m3
+# 下载 Embedding（约 1.5GB）
+huggingface-cli download Qwen/Qwen3-Embedding-0.6B --local-dir models/Qwen3-Embedding-0.6B
 
-# 下载 Reranker（约 1.1GB）
-huggingface-cli download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker-v2-m3
+# 下载 Reranker（约 1.5GB）
+huggingface-cli download tomaarsen/Qwen3-Reranker-0.6B-seq-cls --local-dir models/Qwen3-Reranker-0.6B-seq-cls
 ```
 
 离线环境下，在有网络的机器上下载后拷贝到部署机。
@@ -124,7 +124,7 @@ huggingface-cli download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker
 | 服务 | GPU 显存 |
 |------|---------|
 | vLLM (LLM) | ~20GB |
-| Embedding (BGE-M3) | CPU 运行 |
+| Embedding (Qwen3-Embedding) | CPU 运行 |
 | Reranker | CPU 运行 |
 
 双卡场景：
