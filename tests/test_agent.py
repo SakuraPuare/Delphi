@@ -9,9 +9,9 @@ from delphi.api.app import app
 from delphi.core.clients import EmbeddingResult, SparseVector
 from delphi.retrieval.agent import (
     AgentStep,
-    _build_agent_messages,
-    _parse_action,
-    _parse_llm_output,
+    build_agent_messages,
+    parse_action,
+    parse_llm_output,
     run_agent,
 )
 
@@ -42,6 +42,7 @@ def client():
         a.state.embedding = embedding
         a.state.vector_store = vector_store
         a.state.reranker = None
+        a.state.graph_store = None
         from delphi.retrieval.session import SessionStore
 
         a.state.sessions = SessionStore()
@@ -55,21 +56,21 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# _parse_llm_output tests
+# parse_llm_output tests
 # ---------------------------------------------------------------------------
 
 
 class TestParseLlmOutput:
     def test_standard_thought_action(self):
         text = "Thought: 需要搜索相关代码\nAction: search(EmbeddingClient)"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.thought == "需要搜索相关代码"
         assert step.action == "search(EmbeddingClient)"
         assert step.answer is None
 
     def test_standard_thought_answer(self):
         text = "Thought: 我已经收集到足够信息\nAnswer: 这个函数在 main.py 第10行"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.thought == "我已经收集到足够信息"
         assert step.answer == "这个函数在 main.py 第10行"
         assert step.action is None
@@ -77,21 +78,21 @@ class TestParseLlmOutput:
     def test_answer_takes_priority_over_action(self):
         """当同时出现 Action 和 Answer 时，优先 Answer。"""
         text = "Thought: 分析\nAction: search(foo)\nAnswer: 最终答案"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.answer == "最终答案"
         assert step.action is None
 
     def test_no_thought_label(self):
         """没有 Thought 标记时，Action 之前的文本当作 thought。"""
         text = "我来分析一下这个问题\nAction: search(config)"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.thought == "我来分析一下这个问题"
         assert step.action == "search(config)"
 
     def test_plain_text_becomes_thought(self):
         """完全没有标记时，整段文本当作 thought。"""
         text = "这是一段没有任何标记的文本"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.thought == "这是一段没有任何标记的文本"
         assert step.action is None
         assert step.answer is None
@@ -99,70 +100,70 @@ class TestParseLlmOutput:
     def test_chinese_colon(self):
         """支持中文冒号。"""
         text = "Thought：需要查找\nAction：search(test)"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert step.thought == "需要查找"
         assert step.action == "search(test)"
 
     def test_multiline_answer(self):
         text = "Thought: 总结\nAnswer: 第一行\n第二行\n第三行"
-        step = _parse_llm_output(text)
+        step = parse_llm_output(text)
         assert "第一行" in step.answer
         assert "第三行" in step.answer
 
     def test_empty_input(self):
-        step = _parse_llm_output("")
+        step = parse_llm_output("")
         assert step.thought == ""
         assert step.action is None
         assert step.answer is None
 
     def test_whitespace_only(self):
-        step = _parse_llm_output("   \n  \n  ")
+        step = parse_llm_output("   \n  \n  ")
         assert step.thought == ""
 
 
 # ---------------------------------------------------------------------------
-# _parse_action tests
+# parse_action tests
 # ---------------------------------------------------------------------------
 
 
 class TestParseAction:
     def test_search_simple(self):
-        name, args = _parse_action("search(EmbeddingClient 配置)")
+        name, args = parse_action("search(EmbeddingClient 配置)")
         assert name == "search"
         assert args == ["EmbeddingClient 配置"]
 
     def test_search_quoted(self):
-        name, args = _parse_action('search("hello world")')
+        name, args = parse_action('search("hello world")')
         assert name == "search"
         assert args == ["hello world"]
 
     def test_lookup_basic(self):
-        name, args = _parse_action("lookup(src/main.py, 10, 20)")
+        name, args = parse_action("lookup(src/main.py, 10, 20)")
         assert name == "lookup"
         assert args == ["src/main.py", "10", "20"]
 
     def test_lookup_quoted_path(self):
-        name, args = _parse_action('lookup("src/main.py", 10, 20)')
+        name, args = parse_action('lookup("src/main.py", 10, 20)')
         assert name == "lookup"
         assert args == ["src/main.py", "10", "20"]
 
     def test_unknown_tool(self):
-        name, args = _parse_action("foobar(something)")
+        name, args = parse_action("foobar(something)")
         assert name == "unknown"
 
     def test_malformed_input(self):
-        name, args = _parse_action("这不是一个合法的工具调用")
+        name, args = parse_action("这不是一个合法的工具调用")
         assert name == "unknown"
 
 
 # ---------------------------------------------------------------------------
-# _build_agent_messages tests
+# build_agent_messages tests
 # ---------------------------------------------------------------------------
 
 
 class TestBuildAgentMessages:
     def test_initial_message(self):
-        msgs = _build_agent_messages("你好", [], None)
+        msgs = build_agent_messages("你好", [], None)
         assert msgs[0]["role"] == "system"
         assert msgs[-1]["role"] == "user"
         assert msgs[-1]["content"] == "你好"
@@ -172,7 +173,7 @@ class TestBuildAgentMessages:
             {"role": "user", "content": "之前的问题"},
             {"role": "assistant", "content": "之前的回答"},
         ]
-        msgs = _build_agent_messages("新问题", [], history)
+        msgs = build_agent_messages("新问题", [], history)
         assert msgs[1]["content"] == "之前的问题"
         assert msgs[2]["content"] == "之前的回答"
         assert msgs[-1]["content"] == "新问题"
@@ -185,7 +186,7 @@ class TestBuildAgentMessages:
                 observation="找到了一些结果",
             ),
         ]
-        msgs = _build_agent_messages("问题", steps, None)
+        msgs = build_agent_messages("问题", steps, None)
         # system + user question + assistant step + observation
         assert len(msgs) == 4
         assert "Thought: 需要搜索" in msgs[2]["content"]
@@ -301,25 +302,22 @@ class TestRunAgent:
 
     @patch("delphi.retrieval.agent.generate_sync")
     async def test_lookup_tool_call(self, mock_gen):
-        """lookup 工具被正确调用，通过 qdrant 检索特定文件行号。"""
+        """lookup 工具被正确调用，通过 scroll_by_file 检索特定文件行号。"""
         mock_gen.side_effect = [
             "Thought: 查看具体代码\nAction: lookup(src/main.py, 10, 20)",
             "Thought: 看到了\nAnswer: 这段代码做了初始化",
         ]
         embedding, vector_store = _make_mock_app_state()
 
-        # mock qdrant client 的 query_points 返回
-        mock_point = MagicMock()
-        mock_point.payload = {
+        # mock vector_store.scroll_by_file 返回
+        mock_record = MagicMock()
+        mock_record.payload = {
             "content": "def init():\n    pass",
             "file_path": "src/main.py",
             "start_line": 10,
             "end_line": 15,
         }
-        mock_query_result = MagicMock()
-        mock_query_result.points = [mock_point]
-        vector_store._client = AsyncMock()
-        vector_store._client.query_points = AsyncMock(return_value=mock_query_result)
+        vector_store.scroll_by_file = AsyncMock(return_value=[mock_record])
 
         answer, steps = await run_agent(
             question="main.py 第10-20行是什么？",
@@ -331,8 +329,8 @@ class TestRunAgent:
         assert len(steps) == 2
         assert steps[0].action == "lookup(src/main.py, 10, 20)"
         assert "src/main.py" in steps[0].observation
-        # embedding.embed_all 被调用（lookup 需要 embedding）
-        embedding.embed_all.assert_called()
+        # scroll_by_file 被调用
+        vector_store.scroll_by_file.assert_called_once()
 
 
     @patch("delphi.retrieval.agent.retrieve")
