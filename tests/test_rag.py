@@ -73,6 +73,7 @@ def client():
         from delphi.retrieval.session import SessionStore
 
         a.state.sessions = SessionStore()
+        a.state.graph_store = None
         yield
 
     original_lifespan = app.router.lifespan_context
