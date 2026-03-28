@@ -9,7 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
-TASK_DIR = Path.home() / ".delphi" / "tasks"
+from delphi.core.config import settings
 
 
 class TaskStore:
@@ -17,11 +17,12 @@ class TaskStore:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        TASK_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info("TaskStore 初始化完成, 存储目录={}", TASK_DIR)
+        self._task_dir = Path(settings.data_dir) / "tasks"
+        self._task_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("TaskStore 初始化完成, 存储目录={}", self._task_dir)
 
     def _path(self, task_id: str) -> Path:
-        return TASK_DIR / f"{task_id}.json"
+        return self._task_dir / f"{task_id}.json"
 
     def save(self, task_id: str, data: dict) -> None:
         """写入或更新任务 JSON 文件"""
@@ -53,7 +54,7 @@ class TaskStore:
     def list_all(self) -> list[dict]:
         """列出所有任务"""
         tasks: list[dict] = []
-        for p in TASK_DIR.glob("*.json"):
+        for p in self._task_dir.glob("*.json"):
             try:
                 tasks.append(json.loads(p.read_text()))
             except Exception:

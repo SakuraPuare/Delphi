@@ -11,9 +11,6 @@ from loguru import logger
 
 from delphi.core.config import settings
 
-MODELS_DIR = Path.home() / ".delphi" / "models"
-REGISTRY_FILE = MODELS_DIR / "registry.json"
-
 
 @dataclass
 class ModelInfo:
@@ -30,24 +27,26 @@ class ModelManager:
 
     def __init__(self) -> None:
         self._models: dict[str, ModelInfo] = {}
+        self._models_dir = Path(settings.data_dir) / "models"
+        self._registry_file = self._models_dir / "registry.json"
         self._load_registry()
 
     def _load_registry(self) -> None:
         """从 JSON 文件加载模型注册表"""
-        MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        if REGISTRY_FILE.exists():
-            data = json.loads(REGISTRY_FILE.read_text())
+        self._models_dir.mkdir(parents=True, exist_ok=True)
+        if self._registry_file.exists():
+            data = json.loads(self._registry_file.read_text())
             for item in data:
                 info = ModelInfo(**item)
                 self._models[info.name] = info
-            logger.info("模型注册表已加载, 共 {} 个模型, 路径={}", len(self._models), REGISTRY_FILE)
+            logger.info("模型注册表已加载, 共 {} 个模型, 路径={}", len(self._models), self._registry_file)
         else:
-            logger.debug("模型注册表文件不存在, 初始化为空: {}", REGISTRY_FILE)
+            logger.debug("模型注册表文件不存在, 初始化为空: {}", self._registry_file)
 
     def _save_registry(self) -> None:
         """保存模型注册表到 JSON 文件"""
         data = [asdict(m) for m in self._models.values()]
-        REGISTRY_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        self._registry_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
         logger.debug("模型注册表已保存, 共 {} 个模型", len(data))
 
     def register(self, info: ModelInfo) -> None:

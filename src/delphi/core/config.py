@@ -1,8 +1,13 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DELPHI_", env_file=".env")
+
+    # Storage
+    data_dir: str = str(Path.home() / ".delphi")
 
     # API server
     host: str = "0.0.0.0"

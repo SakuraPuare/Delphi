@@ -7,9 +7,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from delphi.core.config import settings
 from delphi.graph.extractor import CodeGraph
-
-GRAPH_DIR = Path.home() / ".delphi" / "graphs"
 
 
 class GraphStore:
@@ -17,11 +16,12 @@ class GraphStore:
 
     def __init__(self) -> None:
         self._graphs: dict[str, CodeGraph] = {}
-        GRAPH_DIR.mkdir(parents=True, exist_ok=True)
-        logger.debug("图谱存储初始化, 存储目录={}", GRAPH_DIR)
+        self._graph_dir = Path(settings.data_dir) / "graphs"
+        self._graph_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug("图谱存储初始化, 存储目录={}", self._graph_dir)
 
     def _path(self, project: str) -> Path:
-        return GRAPH_DIR / f"{project}.json"
+        return self._graph_dir / f"{project}.json"
 
     def save(self, project: str, graph: CodeGraph) -> None:
         """保存图谱到内存和 JSON 文件"""
@@ -75,7 +75,7 @@ class GraphStore:
     def list_projects(self) -> list[str]:
         """列出所有已保存的图谱项目"""
         projects = set(self._graphs.keys())
-        for p in GRAPH_DIR.glob("*.json"):
+        for p in self._graph_dir.glob("*.json"):
             projects.add(p.stem)
         logger.debug("已保存的图谱项目列表, 共 {} 个: {}", len(projects), sorted(projects))
         return sorted(projects)

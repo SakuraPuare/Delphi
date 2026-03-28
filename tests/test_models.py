@@ -18,125 +18,95 @@ from delphi.models.manager import ModelInfo, ModelManager
 
 
 class TestModelManagerRegister:
-    def test_register_adds_model(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            info = ModelInfo(name="qwen7b", model_path="Qwen/Qwen2.5-7B")
-            mgr.register(info)
+    def test_register_adds_model(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        info = ModelInfo(name="qwen7b", model_path="Qwen/Qwen2.5-7B")
+        mgr.register(info)
 
-            assert mgr.get("qwen7b") is not None
-            assert mgr.get("qwen7b").model_path == "Qwen/Qwen2.5-7B"
+        assert mgr.get("qwen7b") is not None
+        assert mgr.get("qwen7b").model_path == "Qwen/Qwen2.5-7B"
 
-    def test_register_overwrites_existing(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="m1", model_path="/old"))
-            mgr.register(ModelInfo(name="m1", model_path="/new"))
+    def test_register_overwrites_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="m1", model_path="/old"))
+        mgr.register(ModelInfo(name="m1", model_path="/new"))
 
-            assert mgr.get("m1").model_path == "/new"
-            assert len(mgr.list_models()) == 1
+        assert mgr.get("m1").model_path == "/new"
+        assert len(mgr.list_models()) == 1
 
 
 class TestModelManagerUnregister:
-    def test_unregister_existing(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="m1", model_path="/p"))
+    def test_unregister_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="m1", model_path="/p"))
 
-            assert mgr.unregister("m1") is True
-            assert mgr.get("m1") is None
+        assert mgr.unregister("m1") is True
+        assert mgr.get("m1") is None
 
-    def test_unregister_nonexistent(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            assert mgr.unregister("ghost") is False
+    def test_unregister_nonexistent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        assert mgr.unregister("ghost") is False
 
 
 class TestModelManagerListModels:
-    def test_list_empty(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            assert mgr.list_models() == []
+    def test_list_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        assert mgr.list_models() == []
 
-    def test_list_multiple(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="a", model_path="/a"))
-            mgr.register(ModelInfo(name="b", model_path="/b"))
+    def test_list_multiple(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="a", model_path="/a"))
+        mgr.register(ModelInfo(name="b", model_path="/b"))
 
-            models = mgr.list_models()
-            assert len(models) == 2
-            names = {m.name for m in models}
-            assert names == {"a", "b"}
+        models = mgr.list_models()
+        assert len(models) == 2
+        names = {m.name for m in models}
+        assert names == {"a", "b"}
 
 
 class TestModelManagerActivate:
-    async def test_activate_existing(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="m1", model_path="/m1"))
-            mgr.register(ModelInfo(name="m2", model_path="/m2"))
+    async def test_activate_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="m1", model_path="/m1"))
+        mgr.register(ModelInfo(name="m2", model_path="/m2"))
 
-            result = await mgr.activate("m1")
-            assert result is True
-            assert mgr.get("m1").active is True
-            assert mgr.get("m2").active is False
+        result = await mgr.activate("m1")
+        assert result is True
+        assert mgr.get("m1").active is True
+        assert mgr.get("m2").active is False
 
-    async def test_activate_switches_active(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="m1", model_path="/m1"))
-            mgr.register(ModelInfo(name="m2", model_path="/m2"))
+    async def test_activate_switches_active(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="m1", model_path="/m1"))
+        mgr.register(ModelInfo(name="m2", model_path="/m2"))
 
-            await mgr.activate("m1")
-            await mgr.activate("m2")
-            assert mgr.get("m1").active is False
-            assert mgr.get("m2").active is True
+        await mgr.activate("m1")
+        await mgr.activate("m2")
+        assert mgr.get("m1").active is False
+        assert mgr.get("m2").active is True
 
-    async def test_activate_nonexistent(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            result = await mgr.activate("ghost")
-            assert result is False
+    async def test_activate_nonexistent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        result = await mgr.activate("ghost")
+        assert result is False
 
 
 class TestModelManagerPersistence:
-    def test_save_and_load(self, tmp_path):
-        registry_file = tmp_path / "registry.json"
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", registry_file),
-        ):
-            mgr = ModelManager()
-            mgr.register(ModelInfo(name="m1", model_path="/m1", description="test model"))
-            mgr.register(ModelInfo(name="m2", model_path="/m2", model_type="lora", base_model="m1"))
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        registry_file = tmp_path / "models" / "registry.json"
+        mgr = ModelManager()
+        mgr.register(ModelInfo(name="m1", model_path="/m1", description="test model"))
+        mgr.register(ModelInfo(name="m2", model_path="/m2", model_type="lora", base_model="m1"))
 
         # Verify file was written
         assert registry_file.exists()
@@ -144,65 +114,52 @@ class TestModelManagerPersistence:
         assert len(data) == 2
 
         # Load into a new manager instance
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", registry_file),
-        ):
-            mgr2 = ModelManager()
-            assert len(mgr2.list_models()) == 2
-            assert mgr2.get("m1").description == "test model"
-            assert mgr2.get("m2").model_type == "lora"
-            assert mgr2.get("m2").base_model == "m1"
+        mgr2 = ModelManager()
+        assert len(mgr2.list_models()) == 2
+        assert mgr2.get("m1").description == "test model"
+        assert mgr2.get("m2").model_type == "lora"
+        assert mgr2.get("m2").base_model == "m1"
 
-    def test_load_empty_dir(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            assert mgr.list_models() == []
+    def test_load_empty_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
+        assert mgr.list_models() == []
 
 
 class TestGetVllmModels:
-    async def test_get_vllm_models_success(self, tmp_path):
+    async def test_get_vllm_models_success(self, tmp_path, monkeypatch):
         from unittest.mock import MagicMock
 
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
 
-            mock_resp = MagicMock()
-            mock_resp.json.return_value = {"data": [{"id": "Qwen2.5-7B"}, {"id": "Llama-3-8B"}]}
-            mock_resp.raise_for_status.return_value = None
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [{"id": "Qwen2.5-7B"}, {"id": "Llama-3-8B"}]}
+        mock_resp.raise_for_status.return_value = None
 
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_resp
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
 
-            with patch("delphi.models.manager.httpx.AsyncClient") as mock_cls:
-                mock_cls.return_value.__aenter__.return_value = mock_client
-                mock_cls.return_value.__aexit__.return_value = False
-                result = await mgr.get_vllm_models()
+        with patch("delphi.models.manager.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__.return_value = mock_client
+            mock_cls.return_value.__aexit__.return_value = False
+            result = await mgr.get_vllm_models()
 
-            assert result == ["Qwen2.5-7B", "Llama-3-8B"]
+        assert result == ["Qwen2.5-7B", "Llama-3-8B"]
 
-    async def test_get_vllm_models_failure(self, tmp_path):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
+    async def test_get_vllm_models_failure(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
+        mgr = ModelManager()
 
-            mock_client = AsyncMock()
-            mock_client.get.side_effect = Exception("connection refused")
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = Exception("connection refused")
 
-            with patch("delphi.models.manager.httpx.AsyncClient") as mock_cls:
-                mock_cls.return_value.__aenter__.return_value = mock_client
-                mock_cls.return_value.__aexit__.return_value = False
-                result = await mgr.get_vllm_models()
+        with patch("delphi.models.manager.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__.return_value = mock_client
+            mock_cls.return_value.__aexit__.return_value = False
+            result = await mgr.get_vllm_models()
 
-            assert result == []
+        assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -211,23 +168,20 @@ class TestGetVllmModels:
 
 
 @pytest.fixture()
-def model_client(tmp_path):
+def model_client(tmp_path, monkeypatch):
     """Create a test client with a mocked ModelManager using tmp_path."""
+    monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
 
     @asynccontextmanager
     async def _test_lifespan(a):
-        with (
-            patch("delphi.models.manager.MODELS_DIR", tmp_path),
-            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
-        ):
-            mgr = ModelManager()
-            a.state.model_manager = mgr
-            a.state.vector_store = AsyncMock()
-            a.state.embedding = AsyncMock()
-            a.state.reranker = None
-            a.state.sessions = AsyncMock()
-            a.state.graph_store = AsyncMock()
-            yield
+        mgr = ModelManager()
+        a.state.model_manager = mgr
+        a.state.vector_store = AsyncMock()
+        a.state.embedding = AsyncMock()
+        a.state.reranker = None
+        a.state.sessions = AsyncMock()
+        a.state.graph_store = AsyncMock()
+        yield
 
     original = app.router.lifespan_context
     app.router.lifespan_context = _test_lifespan

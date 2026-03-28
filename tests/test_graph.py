@@ -382,7 +382,7 @@ class TestGraphStore:
     @pytest.fixture()
     def store(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> GraphStore:
         """Create a GraphStore that writes to tmp_path instead of ~/.delphi/graphs"""
-        monkeypatch.setattr("delphi.graph.store.GRAPH_DIR", tmp_path)
+        monkeypatch.setattr("delphi.core.config.settings.data_dir", str(tmp_path))
         return GraphStore()
 
     def _sample_graph(self) -> CodeGraph:
@@ -406,7 +406,7 @@ class TestGraphStore:
         store.save("myproject", graph)
 
         # JSON file should exist
-        assert (tmp_path / "myproject.json").exists()
+        assert (tmp_path / "graphs" / "myproject.json").exists()
 
         # load from file
         loaded = store.load("myproject")
@@ -439,10 +439,10 @@ class TestGraphStore:
     def test_delete(self, store: GraphStore, tmp_path: Path):
         graph = self._sample_graph()
         store.save("to_delete", graph)
-        assert (tmp_path / "to_delete.json").exists()
+        assert (tmp_path / "graphs" / "to_delete.json").exists()
 
         store.delete("to_delete")
-        assert not (tmp_path / "to_delete.json").exists()
+        assert not (tmp_path / "graphs" / "to_delete.json").exists()
         assert store.get("to_delete") is None
 
     def test_delete_nonexistent(self, store: GraphStore):
