@@ -8,19 +8,22 @@ from __future__ import annotations
 import json
 import random
 import textwrap
-from contextlib import asynccontextmanager
-from pathlib import Path
+from contextlib import asynccontextmanager, suppress
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from qdrant_client import AsyncQdrantClient
 
 from delphi.api.app import app
 from delphi.core.clients import EmbeddingResult, SparseVector, VectorStore
 from delphi.ingestion.pipeline import create_task, get_task, run_git_import
 from delphi.retrieval.rag import ScoredChunk, build_prompt, retrieve
 from delphi.retrieval.session import SessionStore
-from qdrant_client import AsyncQdrantClient
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 VECTOR_DIM = VectorStore.VECTOR_SIZE
 
@@ -174,8 +177,11 @@ class TestImportToQueryFlow:
         # 第一次导入
         t1 = create_task()
         await run_git_import(
-            task_id=t1, url=str(repo), project="inc-e2e",
-            embedding=emb, vector_store=vs,
+            task_id=t1,
+            url=str(repo),
+            project="inc-e2e",
+            embedding=emb,
+            vector_store=vs,
         )
         count_first = await vs.count("inc-e2e")
         assert count_first > 0
@@ -183,8 +189,11 @@ class TestImportToQueryFlow:
         # 第二次导入（无变更）
         t2 = create_task()
         await run_git_import(
-            task_id=t2, url=str(repo), project="inc-e2e",
-            embedding=emb, vector_store=vs,
+            task_id=t2,
+            url=str(repo),
+            project="inc-e2e",
+            embedding=emb,
+            vector_store=vs,
         )
         assert get_task(t2)["total"] == 0  # 无变更文件
 
@@ -192,8 +201,11 @@ class TestImportToQueryFlow:
         (repo / "main.py").write_text("def new_func(): pass\n")
         t3 = create_task()
         await run_git_import(
-            task_id=t3, url=str(repo), project="inc-e2e",
-            embedding=emb, vector_store=vs,
+            task_id=t3,
+            url=str(repo),
+            project="inc-e2e",
+            embedding=emb,
+            vector_store=vs,
         )
         assert get_task(t3)["total"] >= 1
 
@@ -205,8 +217,11 @@ class TestImportToQueryFlow:
         # 导入
         t = create_task()
         await run_git_import(
-            task_id=t, url=str(repo), project="conv-proj",
-            embedding=emb, vector_store=vs,
+            task_id=t,
+            url=str(repo),
+            project="conv-proj",
+            embedding=emb,
+            vector_store=vs,
         )
 
         # 第一轮查询
@@ -265,8 +280,11 @@ class TestAPIEndToEnd:
         # 先导入数据
         task_id = create_task()
         await run_git_import(
-            task_id=task_id, url=str(repo), project="api-e2e",
-            embedding=emb, vector_store=vs,
+            task_id=task_id,
+            url=str(repo),
+            project="api-e2e",
+            embedding=emb,
+            vector_store=vs,
         )
         assert get_task(task_id)["status"] == "done"
 
@@ -312,8 +330,11 @@ class TestAPIEndToEnd:
 
         task_id = create_task()
         await run_git_import(
-            task_id=task_id, url=str(repo), project="stream-e2e",
-            embedding=emb, vector_store=vs,
+            task_id=task_id,
+            url=str(repo),
+            project="stream-e2e",
+            embedding=emb,
+            vector_store=vs,
         )
 
         @asynccontextmanager
@@ -334,6 +355,7 @@ class TestAPIEndToEnd:
 
         try:
             with TestClient(app, raise_server_exceptions=False) as c:
+
                 async def _fake_generate(messages, url, model):
                     yield "hello"
                     yield " world"
@@ -348,10 +370,8 @@ class TestAPIEndToEnd:
                 for line in resp.text.strip().split("\n"):
                     line = line.strip()
                     if line.startswith("data: "):
-                        try:
+                        with suppress(json.JSONDecodeError):
                             events.append(json.loads(line[6:]))
-                        except json.JSONDecodeError:
-                            pass
 
                 types = [e["type"] for e in events]
                 assert "done" in types
