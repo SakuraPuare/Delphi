@@ -48,7 +48,7 @@ async def upload_init(body: UploadInitRequest) -> UploadInitResponse:
             received_chunks=sorted(session.received_chunks),
         )
 
-    upload_id = create_session(
+    session = create_session(
         file_name=body.file_name,
         file_size=body.file_size,
         file_hash=body.file_hash,
@@ -56,8 +56,8 @@ async def upload_init(body: UploadInitRequest) -> UploadInitResponse:
         project=body.project,
         pipeline=body.pipeline,
     )
-    logger.info("创建新上传会话, upload_id={}", upload_id)
-    return UploadInitResponse(status="ready", upload_id=upload_id)
+    logger.info("创建新上传会话, upload_id={}", session.upload_id)
+    return UploadInitResponse(status="ready", upload_id=session.upload_id)
 
 
 @router.put("/{upload_id}/chunks/{chunk_index}", response_model=ChunkUploadResponse)
