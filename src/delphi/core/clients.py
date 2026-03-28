@@ -262,6 +262,36 @@ class VectorStore:
         info = await self._client.get_collection(collection_name=collection)
         return info.points_count or 0
 
+    async def scroll(
+        self,
+        collection: str,
+        limit: int = 50,
+        offset: str | int | None = None,
+        filters: dict[str, str] | None = None,
+    ) -> tuple[list[models.Record], str | int | None]:
+        """Scroll through collection points. Returns (records, next_offset)."""
+        filter_conditions = None
+        if filters:
+            must = []
+            for key, value in filters.items():
+                must.append(
+                    models.FieldCondition(
+                        key=key,
+                        match=models.MatchValue(value=value),
+                    )
+                )
+            filter_conditions = models.Filter(must=must)
+
+        records, next_offset = await self._client.scroll(
+            collection_name=collection,
+            limit=limit,
+            offset=offset,
+            scroll_filter=filter_conditions,
+            with_payload=True,
+            with_vectors=False,
+        )
+        return records, next_offset
+
     async def close(self) -> None:
         await self._client.close()
 
