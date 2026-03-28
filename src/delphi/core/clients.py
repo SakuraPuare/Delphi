@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import httpx
 from loguru import logger
 from qdrant_client import AsyncQdrantClient, models
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from delphi.core.config import settings
 from delphi.core.telemetry import get_tracer
@@ -32,10 +33,16 @@ class EmbeddingResult:
 class EmbeddingClient:
     """Embedding 服务客户端（兼容 TEI / Ollama / OpenAI 兼容 / Cloudflare Workers AI）"""
 
-    def __init__(self, base_url: str | None = None, batch_size: int = 32, backend: str | None = None) -> None:
+    def __init__(self, base_url: str | None = None, batch_size: int | None = None, backend: str | None = None) -> None:
         self.base_url = (base_url or settings.embedding_url).rstrip("/")
-        self.batch_size = batch_size
         self.backend = backend or settings.embedding_backend
+        # Ollama 的 llama.cpp 在大批次时会触发 output_reserve 级联扩容，默认用更小的批次
+        if batch_size is not None:
+            self.batch_size = batch_size
+        elif self.backend == "ollama":
+            self.batch_size = 8
+        else:
+            self.batch_size = 32
         self._api_key = settings.embedding_api_key
         self._client = httpx.AsyncClient(timeout=120.0)
         logger.info(
@@ -65,6 +72,20 @@ class EmbeddingClient:
         logger.debug("TEI embed 完成, 共获得 {} 条向量", len(all_embeddings))
         return all_embeddings
 
+    @retry(
+        retry=retry_if_exception_type((httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError)),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    async def _embed_ollama_batch(self, batch: list[str]) -> list[list[float]]:
+        resp = await self._client.post(
+            f"{self.base_url}/api/embed",
+            json={"model": settings.embedding_model, "input": batch},
+        )
+        resp.raise_for_status()
+        return resp.json()["embeddings"]
+
     async def _embed_ollama(self, texts: list[str]) -> list[list[float]]:
         logger.debug("Ollama embed 开始, 文本数={}, model={}", len(texts), settings.embedding_model)
         all_embeddings: list[list[float]] = []
@@ -76,12 +97,7 @@ class EmbeddingClient:
                 -(-len(texts) // self.batch_size),
                 len(batch),
             )
-            resp = await self._client.post(
-                f"{self.base_url}/api/embed",
-                json={"model": settings.embedding_model, "input": batch},
-            )
-            resp.raise_for_status()
-            all_embeddings.extend(resp.json()["embeddings"])
+            all_embeddings.extend(await self._embed_ollama_batch(batch))
         logger.debug("Ollama embed 完成, 共获得 {} 条向量", len(all_embeddings))
         return all_embeddings
 
