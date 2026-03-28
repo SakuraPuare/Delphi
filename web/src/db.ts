@@ -21,6 +21,7 @@ export interface MessageRecord {
     score: number;
     start_line?: number;
     end_line?: number;
+    repo_url?: string;
   }>;
   agentSteps?: Array<{
     thought: string;
