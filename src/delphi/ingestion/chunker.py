@@ -45,7 +45,9 @@ EXT_MAP: dict[str, str] = {
     ".go": "go",
     ".rs": "rust",
     ".c": "c",
-    ".h": "c",
+    ".h": "cpp",
+    ".hh": "cpp",
+    ".hxx": "cpp",
     ".cc": "cpp",
     ".cpp": "cpp",
     ".cxx": "cpp",
@@ -55,7 +57,7 @@ EXT_MAP: dict[str, str] = {
 
 # Node types to extract as top-level chunks
 _CHUNK_NODE_TYPES: set[str] = {
-    "function_definition",  # Python
+    "function_definition",  # Python / C / C++
     "class_definition",  # Python
     "function_declaration",  # JS/TS/Go/C/C++/Java
     "class_declaration",  # JS/TS/Java
@@ -65,6 +67,14 @@ _CHUNK_NODE_TYPES: set[str] = {
     "impl_item",  # Rust
     "function_item",  # Rust
     "struct_item",  # Rust
+    # C/C++ specific
+    "class_specifier",  # C++ class
+    "struct_specifier",  # C/C++ struct
+    "enum_specifier",  # C/C++ enum
+    "namespace_definition",  # C++ namespace
+    # Go specific
+    "type_declaration",  # Go type/struct
+    "method_declaration",  # Go method
 }
 
 _NAME_NODE_TYPES: set[str] = {
@@ -101,15 +111,42 @@ def parse_code(source: bytes, language: str) -> list[Chunk]:
         logger.debug("未提取到有效 AST 节点，回退到滑动窗口分块, language={}", language)
         return fallback_chunk(source.decode(errors="replace"))
 
+    # Filter out trivially small chunks (empty or single-char)
+    chunks = [c for c in chunks if len(c.text.strip()) > 1]
+
     logger.debug("Tree-sitter 解析完成, language={}, 块数={}", language, len(chunks))
     return chunks
 
 
 def _get_symbol_name(node: Node) -> str:
     """从 AST 节点提取符号名称。"""
+    # Direct name child (Python, JS, Java, Go, Rust)
     for child in node.children:
         if child.type in _NAME_NODE_TYPES:
             return child.text.decode(errors="replace") if child.text else ""
+
+    # C/C++: name is nested in declarator chain
+    # e.g. function_definition -> function_declarator -> qualified_identifier
+    for child in node.children:
+        if child.type in ("function_declarator", "init_declarator", "declarator"):
+            # Look for the name inside the declarator
+            for sub in child.children:
+                if sub.type in _NAME_NODE_TYPES:
+                    return sub.text.decode(errors="replace") if sub.text else ""
+                if sub.type in ("qualified_identifier", "scoped_identifier", "template_function"):
+                    # Return the full qualified name like "Class::Method"
+                    return sub.text.decode(errors="replace") if sub.text else ""
+                if sub.type == "field_identifier":
+                    return sub.text.decode(errors="replace") if sub.text else ""
+            # Recurse one more level for deeply nested declarators
+            for sub in child.children:
+                if sub.type in ("function_declarator", "pointer_declarator", "reference_declarator"):
+                    for subsub in sub.children:
+                        if subsub.type in _NAME_NODE_TYPES:
+                            return subsub.text.decode(errors="replace") if subsub.text else ""
+                        if subsub.type in ("qualified_identifier", "scoped_identifier"):
+                            return subsub.text.decode(errors="replace") if subsub.text else ""
+
     return ""
 
 
@@ -121,6 +158,97 @@ def _get_parent_symbol(node: Node) -> str:
             return _get_symbol_name(parent)
         parent = parent.parent
     return ""
+
+
+def _split_large_node(node: Node, source: bytes) -> list[Chunk]:
+    """尝试按语义边界切分过大的 AST 节点。
+
+    先尝试按函数体内的顶层语句分组，失败则回退到滑动窗口。
+    """
+    symbol = _get_symbol_name(node)
+    parent = _get_parent_symbol(node)
+    base_row = node.start_point.row
+
+    # Find the compound_statement (function body) child
+    body_node = None
+    for child in node.children:
+        if child.type in ("compound_statement", "block", "statement_block"):
+            body_node = child
+            break
+
+    if body_node is None or len(body_node.children) < 3:
+        # No body found or too few children, use sliding window
+        return _fallback_split(node, source, symbol, parent)
+
+    # Group consecutive statements into chunks that fit within MAX_CHUNK_LINES
+    chunks: list[Chunk] = []
+    group_start = body_node.children[0]
+    group_children: list[Node] = []
+    group_lines = 0
+
+    for child in body_node.children:
+        # Skip punctuation tokens like { and }
+        if child.type in ("{", "}", "comment"):
+            continue
+        child_lines = child.end_point.row - child.start_point.row + 1
+
+        if group_lines + child_lines > MAX_CHUNK_LINES and group_children:
+            # Flush current group
+            start_byte = group_children[0].start_byte
+            end_byte = group_children[-1].end_byte
+            text = source[start_byte:end_byte].decode(errors="replace")
+            chunks.append(Chunk(
+                text=text,
+                metadata=ChunkMetadata(
+                    start_line=group_children[0].start_point.row + 1,
+                    end_line=group_children[-1].end_point.row + 1,
+                    node_type=node.type,
+                    symbol_name=symbol,
+                    parent_symbol=parent,
+                ),
+            ))
+            group_children = [child]
+            group_lines = child_lines
+        else:
+            group_children.append(child)
+            group_lines += child_lines
+
+    # Flush remaining
+    if group_children:
+        start_byte = group_children[0].start_byte
+        end_byte = group_children[-1].end_byte
+        text = source[start_byte:end_byte].decode(errors="replace")
+        chunks.append(Chunk(
+            text=text,
+            metadata=ChunkMetadata(
+                start_line=group_children[0].start_point.row + 1,
+                end_line=group_children[-1].end_point.row + 1,
+                node_type=node.type,
+                symbol_name=symbol,
+                parent_symbol=parent,
+            ),
+        ))
+
+    # If semantic splitting produced reasonable results, use them
+    if len(chunks) > 1:
+        return chunks
+
+    # Otherwise fall back to sliding window
+    return _fallback_split(node, source, symbol, parent)
+
+
+def _fallback_split(node: Node, source: bytes, symbol: str, parent: str) -> list[Chunk]:
+    """滑动窗口回退切分。"""
+    text = source[node.start_byte:node.end_byte].decode(errors="replace")
+    chunks = []
+    for sub in fallback_chunk(text, FALLBACK_WINDOW, FALLBACK_OVERLAP):
+        sub.metadata.node_type = node.type
+        sub.metadata.start_line += node.start_point.row
+        sub.metadata.end_line += node.start_point.row
+        sub.metadata.symbol_name = symbol
+        sub.metadata.parent_symbol = parent
+        chunks.append(sub)
+    return chunks
 
 
 def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
@@ -143,17 +271,8 @@ def _extract_nodes(node: Node, source: bytes, chunks: list[Chunk]) -> None:
                 )
             )
         else:
-            # Split oversized nodes with sliding window
-            logger.debug("AST 节点过大，使用滑动窗口拆分, node_type={}, 行数={}", node.type, lines)
-            symbol = _get_symbol_name(node)
-            parent = _get_parent_symbol(node)
-            for sub in fallback_chunk(text, FALLBACK_WINDOW, FALLBACK_OVERLAP):
-                sub.metadata.node_type = node.type
-                sub.metadata.start_line += node.start_point.row
-                sub.metadata.end_line += node.start_point.row
-                sub.metadata.symbol_name = symbol
-                sub.metadata.parent_symbol = parent
-                chunks.append(sub)
+            logger.debug("AST 节点过大，尝试语义切分, node_type={}, 行数={}", node.type, lines)
+            chunks.extend(_split_large_node(node, source))
         return  # Don't recurse into children of extracted nodes
 
     for child in node.children:
