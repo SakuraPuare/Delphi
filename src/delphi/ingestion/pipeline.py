@@ -14,6 +14,7 @@ from delphi.api.websocket import task_manager
 from delphi.core.task_store import TaskStore  # noqa: TC001
 from delphi.core.telemetry import get_tracer
 from delphi.ingestion.chunker import chunk_file
+from delphi.ingestion.doc_chunker import chunk_doc_file
 from delphi.ingestion.git import clone_repo, collect_files
 from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
 
@@ -159,7 +160,7 @@ async def run_git_import(
         task["total"] = len(changed_files)
         if not changed_files:
             logger.info("未检测到变更，跳过导入, project={}", project)
-            task["status"] = "done"
+            task["status"] = "completed"
             task_manager.complete_task(task_id, {"message": "无变更文件"})
             return
 
@@ -172,7 +173,12 @@ async def run_git_import(
             for i, fpath in enumerate(changed_files):
                 try:
                     rel_path = fpath.relative_to(repo_path)
-                    chunks = chunk_file(fpath, repo_url=url)
+                    # 文档文件使用 doc chunker，代码文件使用 code chunker
+                    _DOC_EXTS = {".md", ".mdx", ".txt", ".rst"}
+                    if fpath.suffix.lower() in _DOC_EXTS:
+                        chunks = chunk_doc_file(fpath)
+                    else:
+                        chunks = chunk_file(fpath, repo_url=url)
                     current_hash = file_hash_map[str(rel_path)]
                     for c in chunks:
                         c.metadata.file_path = str(rel_path)
@@ -190,7 +196,7 @@ async def run_git_import(
         logger.info("分块生成完成, 总块数={}, 变更文件数={}", len(all_chunks), len(changed_files))
 
         if not all_chunks:
-            task["status"] = "done"
+            task["status"] = "completed"
             task_manager.complete_task(task_id, {"message": "无有效分块"})
             return
 
@@ -232,11 +238,11 @@ async def run_git_import(
             es_span.set_attribute("pipeline.embed_store.latency_s", round(elapsed, 2))
             logger.info("向量嵌入与存储完成, 块数={}, 耗时={:.1f}s", len(all_chunks), elapsed)
 
-        task["status"] = "done"
+        task["status"] = "completed"
         logger.info("Git 导入任务完成, task_id={}, 块数={}, 文件数={}", task_id, len(all_chunks), len(changed_files))
         task_manager.complete_task(task_id, {"chunks": len(all_chunks), "files": len(changed_files)})
         if _task_store:
-            data = {**_tasks[task_id], "status": "done", "checkpoint": None, "updated_at": time.time()}
+            data = {**_tasks[task_id], "status": "completed", "checkpoint": None, "updated_at": time.time()}
             _task_store.save(task_id, data)
 
     except Exception as e:

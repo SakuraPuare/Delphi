@@ -17,7 +17,7 @@ from delphi.core.task_store import TaskStore  # noqa: TC001
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
-    DONE = "done"
+    DONE = "completed"
     FAILED = "failed"
 
 

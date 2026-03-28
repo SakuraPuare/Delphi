@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 # --- Health ---
@@ -64,7 +66,7 @@ class MediaImportRequest(BaseModel):
 
 class TaskInfo(BaseModel):
     task_id: str
-    status: str = "pending"
+    status: Literal["pending", "running", "completed", "failed"] = "pending"
     progress: float = 0.0
     total: int = 0
     processed: int = 0
