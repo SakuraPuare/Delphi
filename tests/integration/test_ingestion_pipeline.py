@@ -12,13 +12,12 @@ import pytest
 from qdrant_client import AsyncQdrantClient
 
 from delphi.core.clients import VectorStore
-from delphi.ingestion.chunker import chunk_file, detect_language, fallback_chunk, parse_code
+from delphi.ingestion.chunker import chunk_file, detect_language
 from delphi.ingestion.git import collect_files
-from delphi.ingestion.incremental import compute_file_hash, delete_file_chunks, get_existing_hashes
+from delphi.ingestion.incremental import get_existing_hashes
 from delphi.ingestion.pipeline import create_task, get_task, run_git_import
 
 from .conftest import FakeEmbedding
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -143,8 +142,11 @@ class TestIncrementalUpdate:
         # 第一次导入
         t1 = create_task()
         await run_git_import(
-            task_id=t1, url=str(repo), project="inc-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t1,
+            url=str(repo),
+            project="inc-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
         count_after_first = await vs.count("inc-proj")
         assert count_after_first > 0
@@ -152,8 +154,11 @@ class TestIncrementalUpdate:
         # 第二次导入（无变更）
         t2 = create_task()
         await run_git_import(
-            task_id=t2, url=str(repo), project="inc-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t2,
+            url=str(repo),
+            project="inc-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
         task2 = get_task(t2)
         assert task2["status"] == "done"
@@ -167,18 +172,23 @@ class TestIncrementalUpdate:
 
         t1 = create_task()
         await run_git_import(
-            task_id=t1, url=str(repo), project="mod-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t1,
+            url=str(repo),
+            project="mod-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
-        count_first = await vs.count("mod-proj")
 
         # 修改一个文件
         (repo / "main.py").write_text("def updated(): pass\n")
 
         t2 = create_task()
         await run_git_import(
-            task_id=t2, url=str(repo), project="mod-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t2,
+            url=str(repo),
+            project="mod-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
         task2 = get_task(t2)
         assert task2["status"] == "done"
@@ -191,8 +201,11 @@ class TestIncrementalUpdate:
 
         t1 = create_task()
         await run_git_import(
-            task_id=t1, url=str(repo), project="del-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t1,
+            url=str(repo),
+            project="del-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
 
         # 删除一个文件
@@ -200,8 +213,11 @@ class TestIncrementalUpdate:
 
         t2 = create_task()
         await run_git_import(
-            task_id=t2, url=str(repo), project="del-proj",
-            embedding=embedding, vector_store=vs,
+            task_id=t2,
+            url=str(repo),
+            project="del-proj",
+            embedding=embedding,
+            vector_store=vs,
         )
 
         # 验证 index.js 的 chunks 已被删除

@@ -14,7 +14,6 @@ from delphi.retrieval.intent import Intent, classify_intent
 from delphi.retrieval.rag import ScoredChunk, build_prompt, deduplicate_chunks, retrieve
 from delphi.retrieval.session import SessionStore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -52,9 +51,7 @@ class TestFullRAGPipeline:
         mock_settings.reranker_enabled = False
 
         embedding = AsyncMock()
-        embedding.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()])
-        )
+        embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()]))
 
         points = [
             _make_scored_point("def hello(): pass", "src/main.py", 0.95),
@@ -92,9 +89,7 @@ class TestFullRAGPipeline:
         mock_settings.reranker_score_threshold = 0.0
 
         embedding = AsyncMock()
-        embedding.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()])
-        )
+        embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()]))
 
         points = [
             _make_scored_point("chunk A", "a.py", 0.9),
@@ -131,13 +126,13 @@ class TestFullRAGPipeline:
         mock_settings.llm_api_key = ""
 
         embedding = AsyncMock()
-        embedding.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()])
-        )
+        embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()]))
         vector_store = AsyncMock()
-        vector_store.search = AsyncMock(return_value=[
-            _make_scored_point("rewritten result", "x.py", 0.9),
-        ])
+        vector_store.search = AsyncMock(
+            return_value=[
+                _make_scored_point("rewritten result", "x.py", 0.9),
+            ]
+        )
 
         with patch("delphi.retrieval.rag.rewrite_query", new_callable=AsyncMock) as mock_rewrite:
             mock_rewrite.return_value = "改写后的查询"
@@ -167,7 +162,9 @@ class TestIntentRouting:
         intent = classify_intent(question)
         assert intent == Intent.CODE
 
-        chunks = [ScoredChunk(content="class EmbeddingClient:", file_path="clients.py", start_line=1, end_line=5, score=0.9)]
+        chunks = [
+            ScoredChunk(content="class EmbeddingClient:", file_path="clients.py", start_line=1, end_line=5, score=0.9)
+        ]
         messages = build_prompt(question, chunks)
         assert "代码分析" in messages[0]["content"] or "代码" in messages[0]["content"]
 
@@ -260,9 +257,7 @@ class TestEmptyResults:
         mock_settings.reranker_enabled = False
 
         embedding = AsyncMock()
-        embedding.embed_all = AsyncMock(
-            return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()])
-        )
+        embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[_fake_sparse()]))
         vector_store = AsyncMock()
         vector_store.search = AsyncMock(return_value=[])
 

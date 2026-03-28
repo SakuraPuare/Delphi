@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,7 +16,6 @@ from delphi.api.app import app
 from delphi.core.clients import EmbeddingResult, SparseVector
 from delphi.retrieval.rag import ScoredChunk
 from delphi.retrieval.session import SessionStore
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,10 +28,8 @@ def _parse_sse_events(text: str) -> list[dict]:
     for line in text.strip().split("\n"):
         line = line.strip()
         if line.startswith("data: "):
-            try:
+            with suppress(json.JSONDecodeError):
                 events.append(json.loads(line[6:]))
-            except json.JSONDecodeError:
-                pass
     return events
 
 
@@ -40,6 +37,7 @@ async def _async_gen_tokens(tokens: list[str]):
     """创建异步 token 生成器。"""
     for t in tokens:
         yield t
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -49,9 +47,7 @@ async def _async_gen_tokens(tokens: list[str]):
 def _mock_app_state():
     embedding = AsyncMock()
     fake_sparse = SparseVector(indices=[0, 1, 2], values=[0.1, 0.2, 0.3])
-    embedding.embed_all = AsyncMock(
-        return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-    )
+    embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
     embedding.close = AsyncMock()
 
     vector_store = AsyncMock()
@@ -196,8 +192,12 @@ class TestImportEndpoints:
     def test_get_task_status(self, mock_get, client):
         c, _, _ = client
         mock_get.return_value = {
-            "task_id": "t1", "status": "running",
-            "progress": 0.5, "total": 10, "processed": 5, "error": None,
+            "task_id": "t1",
+            "status": "running",
+            "progress": 0.5,
+            "total": 10,
+            "processed": 5,
+            "error": None,
         }
         resp = c.get("/import/tasks/t1")
         assert resp.status_code == 200
@@ -329,11 +329,14 @@ class TestModelEndpoints:
     @patch("delphi.api.routes.models.ModelInfo")
     def test_register_model(self, _mock_info, client):
         c, _, _ = client
-        resp = c.post("/models/register", json={
-            "name": "test-model",
-            "model_path": "/path/to/model",
-            "model_type": "base",
-        })
+        resp = c.post(
+            "/models/register",
+            json={
+                "name": "test-model",
+                "model_path": "/path/to/model",
+                "model_type": "base",
+            },
+        )
         # 可能 201 或 409（取决于 mock 状态）
         assert resp.status_code in (201, 409)
 
