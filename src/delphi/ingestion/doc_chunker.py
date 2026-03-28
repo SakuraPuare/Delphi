@@ -18,38 +18,34 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)", re.MULTILINE)
 MAX_SECTION_LINES = 50
 
 
-def _split_by_headings(text: str, level: int) -> list[tuple[str, str]]:
-    """Split text into (heading_title, body) pairs at the given heading level.
-
-    Lines before the first heading of that level are grouped under title=""."""
+def _split_by_headings(text: str, level: int) -> list[tuple[str, str, int]]:
+    """Split text into (heading_title, body, line_offset) triples at the given heading level."""
     prefix = "#" * level
     pattern = re.compile(rf"^{prefix}\s+(.*)", re.MULTILINE)
 
-    sections: list[tuple[str, str]] = []
+    sections: list[tuple[str, str, int]] = []
     positions: list[tuple[int, str]] = []
 
     for m in pattern.finditer(text):
-        # Only match exact level (not deeper headings)
-        line_start = m.start()
-        # Check that the heading is exactly `level` #'s by verifying no extra #
         full_match = m.group(0)
         if full_match.lstrip().startswith(prefix + "#"):
             continue
-        positions.append((line_start, m.group(1).strip()))
+        positions.append((m.start(), m.group(1).strip()))
 
     if not positions:
-        return [("", text)]
+        return [("", text, 1)]
 
     # Content before first heading
     if positions[0][0] > 0:
         preamble = text[: positions[0][0]].strip()
         if preamble:
-            sections.append(("", preamble))
+            sections.append(("", preamble, 1))
 
     for i, (pos, title) in enumerate(positions):
         end = positions[i + 1][0] if i + 1 < len(positions) else len(text)
         body = text[pos:end]
-        sections.append((title, body))
+        line_offset = text[:pos].count("\n") + 1
+        sections.append((title, body, line_offset))
 
     return sections
 
@@ -73,53 +69,59 @@ def chunk_markdown(text: str) -> list[Chunk]:
         else:
             # No headings at all — fallback
             logger.debug("Markdown 无标题结构，回退到滑动窗口分块")
-            return _to_chunks(fallback_chunk(text), "heading", "")
+            chunks = fallback_chunk(text)
+            for c in chunks:
+                c.metadata.node_type = "heading"
+            return chunks
 
     logger.debug("Markdown 按 H{} 标题分块, 段落数={}", primary_level, len(sections))
 
     chunks: list[Chunk] = []
-    for title, body in sections:
+    for title, body, line_offset in sections:
         lines = body.splitlines()
-        if len(lines) > MAX_SECTION_LINES and primary_level == 2:
-            # Sub-split by H3
-            sub_sections = _split_by_headings(body, 3)
-            for sub_title, sub_body in sub_sections:
-                heading_path = " > ".join(filter(None, [title, sub_title]))
-                sub_lines = sub_body.splitlines()
-                if len(sub_lines) > MAX_SECTION_LINES:
-                    for fc in fallback_chunk(sub_body):
-                        fc.metadata.node_type = "heading"
-                        chunks.append(fc)
-                else:
-                    chunks.append(_make_heading_chunk(sub_body, heading_path))
-        elif len(lines) > MAX_SECTION_LINES:
-            for fc in fallback_chunk(body):
-                fc.metadata.node_type = "heading"
-                chunks.append(fc)
+        if len(lines) > MAX_SECTION_LINES:
+            # Try sub-splitting at next heading level
+            sub_level = primary_level + 1
+            sub_sections = _split_by_headings(body, sub_level)
+            if len(sub_sections) > 1:
+                for sub_title, sub_body, sub_offset in sub_sections:
+                    heading_path = " > ".join(filter(None, [title, sub_title]))
+                    sub_lines = sub_body.splitlines()
+                    actual_offset = line_offset + sub_offset - 1
+                    if len(sub_lines) > MAX_SECTION_LINES:
+                        for fc in fallback_chunk(sub_body):
+                            fc.metadata.node_type = "heading"
+                            fc.metadata.symbol_name = heading_path
+                            fc.metadata.start_line += actual_offset - 1
+                            fc.metadata.end_line += actual_offset - 1
+                            chunks.append(fc)
+                    else:
+                        chunks.append(_make_heading_chunk(sub_body, heading_path, actual_offset))
+            else:
+                for fc in fallback_chunk(body):
+                    fc.metadata.node_type = "heading"
+                    fc.metadata.symbol_name = title
+                    fc.metadata.start_line += line_offset - 1
+                    fc.metadata.end_line += line_offset - 1
+                    chunks.append(fc)
         else:
-            chunks.append(_make_heading_chunk(body, title))
+            chunks.append(_make_heading_chunk(body, title, line_offset))
 
     return chunks
 
 
-def _make_heading_chunk(text: str, heading_path: str) -> Chunk:
+def _make_heading_chunk(text: str, heading_path: str, line_offset: int = 1) -> Chunk:
     lines = text.splitlines()
     return Chunk(
         text=text,
         metadata=ChunkMetadata(
-            start_line=1,
-            end_line=len(lines),
+            start_line=line_offset,
+            end_line=line_offset + len(lines) - 1,
             node_type="heading",
             language="markdown",
-            file_path=heading_path,  # temporarily store heading path; overwritten by caller
+            symbol_name=heading_path,  # store heading path in symbol_name instead of file_path
         ),
     )
-
-
-def _to_chunks(chunks: list[Chunk], node_type: str, heading_path: str) -> list[Chunk]:
-    for c in chunks:
-        c.metadata.node_type = node_type
-    return chunks
 
 
 def chunk_text(text: str) -> list[Chunk]:
@@ -204,8 +206,9 @@ def chunk_pdf(path: Path) -> list[Chunk]:
                     ),
                 )
             )
+    page_count = len(doc)
     doc.close()
-    logger.info("PDF 解析完成, path={}, 页数={}, 块数={}", path, len(doc) if hasattr(doc, '__len__') else '?', len(chunks))
+    logger.info("PDF 解析完成, path={}, 页数={}, 块数={}", path, page_count, len(chunks))
     return chunks
 
 
