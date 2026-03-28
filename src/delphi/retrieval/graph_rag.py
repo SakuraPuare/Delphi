@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from delphi.graph.store import GraphStore
@@ -15,7 +14,7 @@ from delphi.retrieval.rag import ScoredChunk
 if TYPE_CHECKING:
     from delphi.graph.extractor import CodeGraph, Symbol
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # 关联符号的默认得分衰减系数：graph 扩展的 chunk 得分 = 原始 chunk 得分 * DECAY
 _SCORE_DECAY = 0.6
@@ -38,6 +37,10 @@ def _find_symbols_in_chunk(graph: CodeGraph, chunk: ScoredChunk) -> list[Symbol]
         # 行范围有交集即视为匹配
         if sym.start_line <= chunk.end_line and sym.end_line >= chunk.start_line:
             matched.append(sym)
+    logger.debug(
+        "Chunk 符号匹配完成, file={}, chunk_lines={}-{}, 匹配到 {} 个符号",
+        chunk.file_path, chunk.start_line, chunk.end_line, len(matched),
+    )
     return matched
 
 
@@ -50,6 +53,7 @@ def _collect_related_qnames(graph: CodeGraph, symbol: Symbol) -> set[str]:
             related.add(rel.target)
         elif rel.target == qn:
             related.add(rel.source)
+    logger.debug("符号关联收集完成, symbol={}, 关联数={}", qn, len(related))
     return related
 
 
@@ -99,13 +103,19 @@ def expand_with_graph(
         扩展后的 chunk 列表（原始 + 关联），已去重并按 score 降序排列
     """
     if not chunks:
+        logger.debug("Graph RAG 跳过: 输入 chunks 为空")
         return chunks
 
     store = graph_store or GraphStore()
     graph = store.get(project_id)
     if graph is None:
-        logger.debug("No graph found for project '%s', skipping graph expansion", project_id)
+        logger.warning("Graph RAG 未找到项目图谱, project={}, 回退到向量检索", project_id)
         return chunks
+
+    logger.info(
+        "Graph RAG 扩展开始, project={}, 输入 chunks={}, 图谱符号数={}, 关系数={}",
+        project_id, len(chunks), len(graph.symbols), len(graph.relations),
+    )
 
     # 收集所有关联符号的 qualified_name -> 最佳来源 score
     related_qnames: dict[str, float] = {}
@@ -138,11 +148,13 @@ def expand_with_graph(
     expanded = expanded[:top_k]
 
     if expanded:
+        top_score = expanded[0].score if expanded else 0.0
         logger.info(
-            "Graph expansion added %d chunks for project '%s'",
-            len(expanded),
-            project_id,
+            "Graph RAG 扩展完成, project={}, 新增 {} 个关联 chunk, 最高分={:.4f}",
+            project_id, len(expanded), top_score,
         )
+    else:
+        logger.debug("Graph RAG 未找到新的关联 chunk, project={}", project_id)
 
     # 合并：原始 chunks 在前，扩展 chunks 在后
     return chunks + expanded

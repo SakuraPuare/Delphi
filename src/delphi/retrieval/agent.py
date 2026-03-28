@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,9 +15,10 @@ from delphi.retrieval.rag import generate_sync, retrieve
 
 if TYPE_CHECKING:
     from delphi.core.clients import EmbeddingClient, VectorStore
+    from delphi.graph.store import GraphStore
     from delphi.retrieval.rag import RerankerClient
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -46,6 +46,8 @@ Answer: 你的最终回答
 - 仔细分析每次工具返回的结果，决定是否需要进一步检索
 - 回答时引用具体的文件路径和行号"""
 
+FORCE_FINAL_ANSWER_PROMPT = "你已经进行了多步检索，请根据已收集到的所有信息，直接给出最终答案。不要再调用工具。"
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -70,7 +72,7 @@ _ACTION_RE = re.compile(r"Action\s*[:：]\s*(.+?)(?=\n|$)")
 _ANSWER_RE = re.compile(r"Answer\s*[:：]\s*(.+)", re.DOTALL)
 
 
-def _parse_llm_output(text: str) -> AgentStep:
+def parse_llm_output(text: str) -> AgentStep:
     """从 LLM 输出中解析 Thought / Action / Answer。
 
     对格式不规范的输出做容错处理：
@@ -78,6 +80,7 @@ def _parse_llm_output(text: str) -> AgentStep:
     - 如果同时出现 Action 和 Answer，优先 Answer
     """
     text = text.strip()
+    logger.debug("解析 LLM 输出, 长度={}", len(text))
 
     thought = ""
     action = None
@@ -99,7 +102,12 @@ def _parse_llm_output(text: str) -> AgentStep:
         if action_m:
             action = action_m.group(1).strip()
 
-    return AgentStep(thought=thought, action=action, answer=answer)
+    step = AgentStep(thought=thought, action=action, answer=answer)
+    logger.debug(
+        "LLM 输出解析完成, has_thought={}, has_action={}, has_answer={}",
+        bool(thought), action is not None, answer is not None,
+    )
+    return step
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +121,7 @@ _LOOKUP_RE = re.compile(
 )
 
 
-def _parse_action(action_str: str) -> tuple[str, list[str]]:
+def parse_action(action_str: str) -> tuple[str, list[str]]:
     """解析 Action 字符串，返回 (tool_name, args)。
 
     支持的格式：
@@ -123,10 +131,12 @@ def _parse_action(action_str: str) -> tuple[str, list[str]]:
       lookup("path/to/file.py", 10, 20)
     """
     action_str = action_str.strip()
+    logger.debug("解析 Action 字符串: {}", action_str[:100])
 
     m = _SEARCH_RE.match(action_str)
     if m:
         query = m.group(1).strip().strip("\"'")
+        logger.debug("解析为 search 工具, query={}", query[:80])
         return "search", [query]
 
     m = _LOOKUP_RE.match(action_str)
@@ -134,8 +144,10 @@ def _parse_action(action_str: str) -> tuple[str, list[str]]:
         file_path = m.group(1).strip().strip("\"'")
         start_line = m.group(2)
         end_line = m.group(3)
+        logger.debug("解析为 lookup 工具, file={}, lines={}-{}", file_path, start_line, end_line)
         return "lookup", [file_path, start_line, end_line]
 
+    logger.warning("未知 Action 格式: {}", action_str[:100])
     return "unknown", [action_str]
 
 
@@ -144,24 +156,31 @@ def _parse_action(action_str: str) -> tuple[str, list[str]]:
 # ---------------------------------------------------------------------------
 
 
-async def _exec_search(
+async def exec_search(
     query: str,
     project: str,
     embedding_client: EmbeddingClient,
     vector_store: VectorStore,
     reranker: RerankerClient | None,
+    top_k: int = settings.chunk_top_k,
+    graph_store: GraphStore | None = None,
 ) -> str:
     """执行 search 工具，返回格式化的检索结果。"""
+    logger.info("Agent search 工具执行, query={}, project={}", query[:80], project)
     chunks = await retrieve(
         question=query,
         project=project,
-        top_k=settings.chunk_top_k,
+        top_k=top_k,
         embedding_client=embedding_client,
         vector_store=vector_store,
         reranker=reranker,
+        graph_store=graph_store,
     )
     if not chunks:
+        logger.warning("Agent search 未找到相关内容, query={}", query[:80])
         return "未找到相关内容。"
+
+    logger.debug("Agent search 返回 {} 个结果", len(chunks))
 
     parts: list[str] = []
     for i, c in enumerate(chunks, 1):
@@ -172,7 +191,7 @@ async def _exec_search(
     return "\n\n".join(parts)
 
 
-async def _exec_lookup(
+async def exec_lookup(
     file_path: str,
     start_line: int,
     end_line: int,
@@ -180,49 +199,85 @@ async def _exec_lookup(
     embedding_client: EmbeddingClient,
     vector_store: VectorStore,
 ) -> str:
-    """执行 lookup 工具：通过向量检索 + file_path 过滤 + 行号范围筛选。"""
-    from qdrant_client import models as qmodels
-
-    # 用 file_path 作为查询文本来获取 embedding
-    embed_result = await embedding_client.embed_all([file_path])
-    query_vector = embed_result.dense[0]
-
-    # 带 file_path 过滤的检索
-    collection = project
-    client = vector_store._client  # noqa: SLF001
-    result = await client.query_points(
-        collection_name=collection,
-        prefetch=[
-            qmodels.Prefetch(
-                query=query_vector,
-                using="dense",
-                limit=50,
-                filter=qmodels.Filter(
-                    must=[qmodels.FieldCondition(key="file_path", match=qmodels.MatchValue(value=file_path))]
-                ),
-            ),
-        ],
-        query=qmodels.FusionQuery(fusion=qmodels.Fusion.RRF),
-        limit=50,
+    """执行 lookup 工具：通过 scroll 过滤 file_path + 行号范围。"""
+    logger.info("Agent lookup 工具执行, file={}, lines={}-{}", file_path, start_line, end_line)
+    records = await vector_store.scroll_by_file(
+        collection=project,
+        file_path=file_path,
+        start_line=start_line,
+        end_line=end_line,
     )
 
-    # 按行号范围过滤
     matched_chunks: list[str] = []
-    for point in result.points:
-        payload = point.payload or {}
+    for record in records:
+        payload = record.payload or {}
         sl = payload.get("start_line")
         el = payload.get("end_line")
         if sl is None or el is None:
             continue
-        # 有交集即保留
-        if sl <= end_line and el >= start_line:
-            text = payload.get("text", payload.get("content", ""))
-            matched_chunks.append(f"[行 {sl}-{el}]\n{text}")
+        text = payload.get("text", payload.get("content", ""))
+        matched_chunks.append(f"[行 {sl}-{el}]\n{text}")
 
     if not matched_chunks:
+        logger.warning("Agent lookup 未找到内容, file={}, lines={}-{}", file_path, start_line, end_line)
         return f"未找到 {file_path} 中行 {start_line}-{end_line} 的内容。"
 
+    logger.debug("Agent lookup 返回 {} 个代码片段", len(matched_chunks))
     return f"文件: {file_path}\n\n" + "\n\n".join(matched_chunks)
+
+
+async def exec_tool(
+    step: AgentStep,
+    project: str,
+    embedding_client: EmbeddingClient,
+    vector_store: VectorStore,
+    reranker: RerankerClient | None = None,
+    top_k: int = settings.chunk_top_k,
+    graph_store: GraphStore | None = None,
+) -> str:
+    """执行 agent step 中的工具调用，返回 observation 文本。
+
+    包含工具分发、异常处理和结果截断。
+    """
+    tool_name, args = parse_action(step.action)
+    observation: str
+    logger.info("Agent 工具执行开始, tool={}, args={}", tool_name, args[:3] if args else [])
+
+    try:
+        if tool_name == "search" and args:
+            observation = await exec_search(
+                query=args[0],
+                project=project,
+                embedding_client=embedding_client,
+                vector_store=vector_store,
+                reranker=reranker,
+                top_k=top_k,
+                graph_store=graph_store,
+            )
+        elif tool_name == "lookup" and len(args) == 3:
+            observation = await exec_lookup(
+                file_path=args[0],
+                start_line=int(args[1]),
+                end_line=int(args[2]),
+                project=project,
+                embedding_client=embedding_client,
+                vector_store=vector_store,
+            )
+        else:
+            observation = f"未知工具或参数错误: {step.action}"
+            logger.warning("Agent 未知工具调用: {}", step.action)
+    except Exception as exc:
+        logger.error("Agent 工具执行失败, tool={}: {}", tool_name, str(exc), exc_info=True)
+        observation = f"工具执行出错: {exc}"
+
+    # 截断过长的 observation，避免上下文溢出
+    max_obs_len = 4000
+    if len(observation) > max_obs_len:
+        logger.debug("Agent 工具结果截断, 原始长度={}, 截断到={}", len(observation), max_obs_len)
+        observation = observation[:max_obs_len] + "\n...(结果已截断)"
+
+    logger.debug("Agent 工具执行完成, tool={}, observation_len={}", tool_name, len(observation))
+    return observation
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +285,7 @@ async def _exec_lookup(
 # ---------------------------------------------------------------------------
 
 
-def _build_agent_messages(
+def build_agent_messages(
     question: str,
     steps: list[AgentStep],
     history: list[dict] | None = None,
@@ -259,6 +314,17 @@ def _build_agent_messages(
     return messages
 
 
+def build_force_final_messages(
+    question: str,
+    steps: list[AgentStep],
+    history: list[dict] | None = None,
+) -> list[dict]:
+    """构建强制最终答案的消息列表。"""
+    messages = build_agent_messages(question, steps, history)
+    messages.append({"role": "user", "content": FORCE_FINAL_ANSWER_PROMPT})
+    return messages
+
+
 async def run_agent(
     question: str,
     project: str,
@@ -267,91 +333,68 @@ async def run_agent(
     reranker: RerankerClient | None = None,
     max_steps: int = 5,
     history: list[dict] | None = None,
+    top_k: int = settings.chunk_top_k,
+    graph_store: GraphStore | None = None,
 ) -> tuple[str, list[AgentStep]]:
     """运行 agent loop，返回 (最终答案, 步骤列表)。"""
     steps: list[AgentStep] = []
+    logger.info("Agent 推理开始, question={}, project={}, max_steps={}", question[:80], project, max_steps)
 
     for step_num in range(max_steps):
-        messages = _build_agent_messages(question, steps, history)
+        messages = build_agent_messages(question, steps, history)
+        logger.debug("Agent 第 {} 步, 构建消息 {} 条", step_num + 1, len(messages))
 
         try:
             llm_output = await generate_sync(messages, settings.vllm_url, settings.llm_model)
         except Exception:
-            logger.exception("Agent LLM call failed at step %d", step_num)
+            logger.exception("Agent LLM 调用失败, step={}", step_num + 1)
             break
 
-        step = _parse_llm_output(llm_output)
+        step = parse_llm_output(llm_output)
 
         # 如果 LLM 给出了最终答案
         if step.answer:
             steps.append(step)
+            logger.info("Agent 推理完成, 在第 {} 步获得最终答案, 答案长度={}", step_num + 1, len(step.answer))
             return step.answer, steps
 
         # 如果没有 action，把 thought 当作最终答案
         if not step.action:
             steps.append(step)
+            logger.info("Agent 推理完成, 第 {} 步无 action, 以 thought 作为答案", step_num + 1)
             return step.thought, steps
 
         # 执行工具
-        tool_name, args = _parse_action(step.action)
-        observation: str
-
-        try:
-            if tool_name == "search" and args:
-                observation = await _exec_search(
-                    query=args[0],
-                    project=project,
-                    embedding_client=embedding_client,
-                    vector_store=vector_store,
-                    reranker=reranker,
-                )
-            elif tool_name == "lookup" and len(args) == 3:
-                observation = await _exec_lookup(
-                    file_path=args[0],
-                    start_line=int(args[1]),
-                    end_line=int(args[2]),
-                    project=project,
-                    embedding_client=embedding_client,
-                    vector_store=vector_store,
-                )
-            else:
-                observation = f"未知工具或参数错误: {step.action}"
-        except Exception as exc:
-            logger.warning("Tool execution failed: %s", exc, exc_info=True)
-            observation = f"工具执行出错: {exc}"
-
-        # 截断过长的 observation，避免上下文溢出
-        max_obs_len = 4000
-        if len(observation) > max_obs_len:
-            observation = observation[:max_obs_len] + "\n...(结果已截断)"
-
+        logger.debug("Agent 第 {} 步执行工具: {}", step_num + 1, step.action[:80])
+        observation = await exec_tool(
+            step, project, embedding_client, vector_store, reranker, top_k,
+            graph_store=graph_store,
+        )
         step.observation = observation
         steps.append(step)
 
     # 超过 max_steps，强制用已有信息生成最终答案
-    return await _force_final_answer(question, steps, history), steps
+    logger.warning("Agent 超过最大步数 {}, 强制生成最终答案, 已执行 {} 步", max_steps, len(steps))
+    return await force_final_answer(question, steps, history), steps
 
 
-async def _force_final_answer(
+async def force_final_answer(
     question: str,
     steps: list[AgentStep],
     history: list[dict] | None = None,
 ) -> str:
     """超过最大步数时，强制让 LLM 基于已收集信息生成最终答案。"""
-    messages = _build_agent_messages(question, steps, history)
-    messages.append(
-        {
-            "role": "user",
-            "content": "你已经进行了多步检索，请根据已收集到的所有信息，直接给出最终答案。不要再调用工具。",
-        }
-    )
+    logger.info("强制生成最终答案, 已有 {} 步记录", len(steps))
+    messages = build_force_final_messages(question, steps, history)
 
     try:
         answer = await generate_sync(messages, settings.vllm_url, settings.llm_model)
+        logger.info("强制最终答案生成成功, 答案长度={}", len(answer))
     except Exception:
-        logger.exception("Force final answer failed")
+        logger.exception("强制最终答案生成失败")
         # 回退：拼接所有 observation 作为答案
         observations = [s.observation for s in steps if s.observation]
         answer = "根据检索到的信息：\n\n" + "\n\n".join(observations) if observations else "无法生成答案。"
+        logger.warning("回退到拼接 observation, 共 {} 条", len(observations))
 
     return answer

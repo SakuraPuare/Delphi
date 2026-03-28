@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from enum import StrEnum
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class Intent(StrEnum):
@@ -38,17 +37,23 @@ _DOC_PATTERNS = [
 
 def classify_intent(question: str) -> Intent:
     """基于关键词规则快速分类用户意图。"""
+    logger.debug("意图分类开始, question={}", question[:100])
     code_score = sum(1 for p in _CODE_KEYWORD_PATTERNS if re.search(p, question, re.IGNORECASE)) + sum(
         1 for p in _CODE_STYLE_PATTERNS if re.search(p, question)
     )
     doc_score = sum(1 for p in _DOC_PATTERNS if re.search(p, question, re.IGNORECASE))
 
+    logger.debug("意图评分结果, code_score={}, doc_score={}", code_score, doc_score)
+
     if code_score > doc_score:
-        return Intent.CODE
+        intent = Intent.CODE
     elif doc_score > code_score:
-        return Intent.DOC
+        intent = Intent.DOC
     else:
-        return Intent.GENERAL
+        intent = Intent.GENERAL
+
+    logger.info("意图分类完成, intent={}, question={}", intent, question[:80])
+    return intent
 
 
 # 不同意图的 system prompt
@@ -84,4 +89,6 @@ PROMPTS: dict[Intent, str] = {
 
 def get_system_prompt(intent: Intent) -> str:
     """根据意图返回对应的 system prompt。"""
-    return PROMPTS.get(intent, PROMPTS[Intent.GENERAL])
+    prompt = PROMPTS.get(intent, PROMPTS[Intent.GENERAL])
+    logger.debug("获取 system prompt, intent={}, prompt_len={}", intent, len(prompt))
+    return prompt
