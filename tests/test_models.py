@@ -19,8 +19,9 @@ from delphi.models.manager import ModelInfo, ModelManager
 
 class TestModelManagerRegister:
     def test_register_adds_model(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             info = ModelInfo(name="qwen7b", model_path="Qwen/Qwen2.5-7B")
@@ -30,8 +31,9 @@ class TestModelManagerRegister:
             assert mgr.get("qwen7b").model_path == "Qwen/Qwen2.5-7B"
 
     def test_register_overwrites_existing(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="m1", model_path="/old"))
@@ -43,8 +45,9 @@ class TestModelManagerRegister:
 
 class TestModelManagerUnregister:
     def test_unregister_existing(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="m1", model_path="/p"))
@@ -53,8 +56,9 @@ class TestModelManagerUnregister:
             assert mgr.get("m1") is None
 
     def test_unregister_nonexistent(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             assert mgr.unregister("ghost") is False
@@ -62,15 +66,17 @@ class TestModelManagerUnregister:
 
 class TestModelManagerListModels:
     def test_list_empty(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             assert mgr.list_models() == []
 
     def test_list_multiple(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="a", model_path="/a"))
@@ -84,8 +90,9 @@ class TestModelManagerListModels:
 
 class TestModelManagerActivate:
     async def test_activate_existing(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="m1", model_path="/m1"))
@@ -97,8 +104,9 @@ class TestModelManagerActivate:
             assert mgr.get("m2").active is False
 
     async def test_activate_switches_active(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="m1", model_path="/m1"))
@@ -110,8 +118,9 @@ class TestModelManagerActivate:
             assert mgr.get("m2").active is True
 
     async def test_activate_nonexistent(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             result = await mgr.activate("ghost")
@@ -121,8 +130,9 @@ class TestModelManagerActivate:
 class TestModelManagerPersistence:
     def test_save_and_load(self, tmp_path):
         registry_file = tmp_path / "registry.json"
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", registry_file
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", registry_file),
         ):
             mgr = ModelManager()
             mgr.register(ModelInfo(name="m1", model_path="/m1", description="test model"))
@@ -134,8 +144,9 @@ class TestModelManagerPersistence:
         assert len(data) == 2
 
         # Load into a new manager instance
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", registry_file
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", registry_file),
         ):
             mgr2 = ModelManager()
             assert len(mgr2.list_models()) == 2
@@ -144,8 +155,9 @@ class TestModelManagerPersistence:
             assert mgr2.get("m2").base_model == "m1"
 
     def test_load_empty_dir(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             assert mgr.list_models() == []
@@ -155,15 +167,14 @@ class TestGetVllmModels:
     async def test_get_vllm_models_success(self, tmp_path):
         from unittest.mock import MagicMock
 
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
 
             mock_resp = MagicMock()
-            mock_resp.json.return_value = {
-                "data": [{"id": "Qwen2.5-7B"}, {"id": "Llama-3-8B"}]
-            }
+            mock_resp.json.return_value = {"data": [{"id": "Qwen2.5-7B"}, {"id": "Llama-3-8B"}]}
             mock_resp.raise_for_status.return_value = None
 
             mock_client = AsyncMock()
@@ -177,8 +188,9 @@ class TestGetVllmModels:
             assert result == ["Qwen2.5-7B", "Llama-3-8B"]
 
     async def test_get_vllm_models_failure(self, tmp_path):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
 
@@ -204,8 +216,9 @@ def model_client(tmp_path):
 
     @asynccontextmanager
     async def _test_lifespan(a):
-        with patch("delphi.models.manager.MODELS_DIR", tmp_path), patch(
-            "delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"
+        with (
+            patch("delphi.models.manager.MODELS_DIR", tmp_path),
+            patch("delphi.models.manager.REGISTRY_FILE", tmp_path / "registry.json"),
         ):
             mgr = ModelManager()
             a.state.model_manager = mgr

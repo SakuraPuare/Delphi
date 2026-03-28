@@ -93,11 +93,11 @@ class TestGenerateQAPairs:
         # First call per chunk: questions; second call per chunk: answer
         mock_gen.side_effect = [
             "如何打印hello\n如何定义函数",  # questions for chunk 1
-            "使用 print('hello')",           # answer for q1 of chunk 1
-            "使用 def 关键字",               # answer for q2 of chunk 1
-            "如何安装\n如何运行",            # questions for chunk 2
-            "执行 install 命令",             # answer for q1 of chunk 2
-            "执行 run 命令",                 # answer for q2 of chunk 2
+            "使用 print('hello')",  # answer for q1 of chunk 1
+            "使用 def 关键字",  # answer for q2 of chunk 1
+            "如何安装\n如何运行",  # questions for chunk 2
+            "执行 install 命令",  # answer for q1 of chunk 2
+            "执行 run 命令",  # answer for q2 of chunk 2
         ]
 
         results = []

@@ -24,9 +24,7 @@ def _make_mock_app_state():
     """Return mocked embedding + vector_store attached to app.state."""
     embedding = AsyncMock()
     fake_sparse = SparseVector(indices=[0, 1, 2], values=[0.1, 0.2, 0.3])
-    embedding.embed_all = AsyncMock(
-        return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse])
-    )
+    embedding.embed_all = AsyncMock(return_value=EmbeddingResult(dense=[[0.1] * 1024], sparse=[fake_sparse]))
     vector_store = AsyncMock()
     return embedding, vector_store
 
@@ -195,7 +193,6 @@ class TestBuildAgentMessages:
         assert "Observation:" in msgs[3]["content"]
 
 
-
 # ---------------------------------------------------------------------------
 # run_agent tests
 # ---------------------------------------------------------------------------
@@ -207,10 +204,7 @@ class TestRunAgent:
     @patch("delphi.retrieval.agent.generate_sync")
     async def test_simple_question_direct_answer(self, mock_gen):
         """简单问题直接返回 Answer，不进入工具调用循环。"""
-        mock_gen.return_value = (
-            "Thought: 这个问题我可以直接回答\n"
-            "Answer: hello 函数定义在 main.py 第1行"
-        )
+        mock_gen.return_value = "Thought: 这个问题我可以直接回答\nAnswer: hello 函数定义在 main.py 第1行"
         embedding, vector_store = _make_mock_app_state()
 
         answer, steps = await run_agent(
@@ -263,7 +257,6 @@ class TestRunAgent:
         assert steps[0].observation is not None
         assert steps[1].answer is not None
         assert mock_gen.call_count == 2
-
 
     @patch("delphi.retrieval.agent.retrieve")
     @patch("delphi.retrieval.agent.generate_sync")
@@ -331,7 +324,6 @@ class TestRunAgent:
         assert "src/main.py" in steps[0].observation
         # scroll_by_file 被调用
         vector_store.scroll_by_file.assert_called_once()
-
 
     @patch("delphi.retrieval.agent.retrieve")
     @patch("delphi.retrieval.agent.generate_sync")
@@ -486,8 +478,6 @@ class TestRunAgent:
         assert messages[1]["content"] == "之前的问题"
 
 
-
-
 # ---------------------------------------------------------------------------
 # API route tests
 # ---------------------------------------------------------------------------
@@ -497,9 +487,7 @@ class TestAgentQueryRoute:
     @patch("delphi.retrieval.agent.generate_sync")
     def test_post_agent_query_success(self, mock_gen, client):
         """POST /agent/query 正常返回结构化响应。"""
-        mock_gen.return_value = (
-            "Thought: 直接回答\nAnswer: 这是答案"
-        )
+        mock_gen.return_value = "Thought: 直接回答\nAnswer: 这是答案"
         resp = client.post(
             "/agent/query",
             json={"question": "测试问题", "project": "proj"},
@@ -577,4 +565,3 @@ class TestAgentQueryRoute:
         )
         assert resp2.status_code == 200
         assert resp2.json()["session_id"] == session_id
-

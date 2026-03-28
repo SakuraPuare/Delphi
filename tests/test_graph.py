@@ -323,10 +323,17 @@ class TestCodeGraphQueries:
 class TestCodeGraphSerialization:
     def test_to_dict_structure(self):
         graph = CodeGraph()
-        graph.add_symbol(Symbol(
-            name="foo", qualified_name="a.py::foo", kind="function",
-            file_path="a.py", start_line=1, end_line=3, language="python",
-        ))
+        graph.add_symbol(
+            Symbol(
+                name="foo",
+                qualified_name="a.py::foo",
+                kind="function",
+                file_path="a.py",
+                start_line=1,
+                end_line=3,
+                language="python",
+            )
+        )
         graph.add_relation(Relation(source="a.py::foo", target="print", kind="calls"))
 
         d = graph.to_dict()
@@ -338,10 +345,17 @@ class TestCodeGraphSerialization:
 
     def test_roundtrip(self):
         graph = CodeGraph()
-        graph.add_symbol(Symbol(
-            name="Bar", qualified_name="b.py::Bar", kind="class",
-            file_path="b.py", start_line=1, end_line=10, language="python",
-        ))
+        graph.add_symbol(
+            Symbol(
+                name="Bar",
+                qualified_name="b.py::Bar",
+                kind="class",
+                file_path="b.py",
+                start_line=1,
+                end_line=10,
+                language="python",
+            )
+        )
         graph.add_relation(Relation(source="b.py::Bar", target="Base", kind="inherits"))
 
         restored = CodeGraph.from_dict(graph.to_dict())
@@ -373,10 +387,17 @@ class TestGraphStore:
 
     def _sample_graph(self) -> CodeGraph:
         g = CodeGraph()
-        g.add_symbol(Symbol(
-            name="main", qualified_name="main.py::main", kind="function",
-            file_path="main.py", start_line=1, end_line=5, language="python",
-        ))
+        g.add_symbol(
+            Symbol(
+                name="main",
+                qualified_name="main.py::main",
+                kind="function",
+                file_path="main.py",
+                start_line=1,
+                end_line=5,
+                language="python",
+            )
+        )
         g.add_relation(Relation(source="main.py::main", target="print", kind="calls"))
         return g
 
@@ -443,14 +464,18 @@ class TestGraphStore:
 
 class TestExtractFromDirectory:
     def test_basic_directory(self, tmp_path: Path):
-        (tmp_path / "hello.py").write_text(dedent("""\
+        (tmp_path / "hello.py").write_text(
+            dedent("""\
             def hello():
                 print("hi")
-        """))
-        (tmp_path / "world.py").write_text(dedent("""\
+        """)
+        )
+        (tmp_path / "world.py").write_text(
+            dedent("""\
             def world():
                 hello()
-        """))
+        """)
+        )
 
         graph = extract_from_directory(tmp_path)
         names = {s.name for s in graph.symbols.values()}
@@ -485,11 +510,13 @@ class TestExtractFromDirectory:
     def test_nested_directory(self, tmp_path: Path):
         sub = tmp_path / "pkg"
         sub.mkdir()
-        (sub / "mod.py").write_text(dedent("""\
+        (sub / "mod.py").write_text(
+            dedent("""\
             class Config:
                 def load(self):
                     pass
-        """))
+        """)
+        )
 
         graph = extract_from_directory(tmp_path)
         names = {s.name for s in graph.symbols.values()}
