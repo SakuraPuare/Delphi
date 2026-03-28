@@ -214,7 +214,7 @@ class TaskManager:
 
     def subscribe(self, task_id: str | None = None) -> asyncio.Queue:
         """订阅任务更新，返回一个 Queue。task_id=None 表示订阅全部。"""
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
+        q: asyncio.Queue = asyncio.Queue(maxsize=4096)
         if task_id is None:
             self._global_subscribers.add(q)
             logger.debug("新增全局 WebSocket 订阅者, 当前全局订阅数={}", len(self._global_subscribers))

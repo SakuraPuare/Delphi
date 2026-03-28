@@ -64,6 +64,36 @@ class MediaImportRequest(BaseModel):
     whisper_model: str = "large-v3"
 
 
+class UploadInitRequest(BaseModel):
+    file_name: str
+    file_size: int
+    file_hash: str
+    total_chunks: int
+    project: str
+    pipeline: Literal["doc", "media"]
+
+
+class UploadInitResponse(BaseModel):
+    status: Literal["exists", "ready", "partial"]
+    upload_id: str | None = None
+    received_chunks: list[int] = []
+
+
+class ChunkUploadResponse(BaseModel):
+    chunk_index: int
+    received: bool
+
+
+class UploadCompleteRequest(BaseModel):
+    trigger_pipeline: bool = True
+
+
+class UploadCompleteResponse(BaseModel):
+    status: Literal["ok", "hash_mismatch"]
+    file_path: str | None = None
+    task_id: str | None = None
+
+
 class TaskInfo(BaseModel):
     task_id: str
     status: Literal["pending", "running", "done", "failed"] = "pending"
